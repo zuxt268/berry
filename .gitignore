@@ -1,0 +1,63 @@
+# ===========================
+# Go build & cache
+# ===========================
+/bin/
+/build/
+/dist/
+/tmp/
+/out/
+/coverage/
+/*.exe
+/*.exe~
+/*.dll
+/*.so
+/*.dylib
+/*.test
+*.out
+
+# ===========================
+# Go module / dependencies
+# ===========================
+/vendor/
+/go.sum.tmp
+*.log
+
+# ===========================
+# Air (ホットリロード)
+# ===========================
+.air
+tmp/
+.air.toml~
+tmp/main
+tmp/*
+
+# ===========================
+# Frontend
+# ===========================
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.next/
+frontend/.nuxt/
+frontend/package-lock.json
+
+# ===========================
+# IDE / Editor settings
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+.DS_Store
+
+# ===========================
+# OS / Docker / Env files
+# ===========================
+.env
+.env.*
+.dockerignore
+.envrc
+
+credentials
