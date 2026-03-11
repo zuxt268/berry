@@ -9,58 +9,43 @@ import (
 	"time"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
 
 const lineAPIBase = "https://api.line.me/v2/bot"
 
-// LineDataAdapter LINE Messaging APIから統計データを取得するアダプター
-//
-//go:generate mockgen -source=$GOFILE -destination=./mock/mock_$GOFILE -package mock
-type LineDataAdapter interface {
-	FetchDailyReport(ctx context.Context, channelAccessToken string, date time.Time) (*LineReportData, error)
-}
-
-// LineReportData LINEから取得したレポートデータ
-type LineReportData struct {
-	Followers       int
-	TargetedReaches int
-	Blocks          int
-	MessageDelivery *domain.LineMessageDelivery
-	Demographic     *domain.LineDemographic
-}
-
 type lineDataAdapter struct{}
 
-func NewLineDataAdapter() LineDataAdapter {
+func NewLineDataAdapter() port.LineDataAdapter {
 	return &lineDataAdapter{}
 }
 
-func (a *lineDataAdapter) FetchDailyReport(ctx context.Context, channelAccessToken string, date time.Time) (*LineReportData, error) {
-	data := &LineReportData{}
+func (a *lineDataAdapter) FetchDailyReport(ctx context.Context, channelAccessToken string, date time.Time) (*domain.LineDailyReport, error) {
+	report := &domain.LineDailyReport{}
 	dateStr := date.Format("20060102")
 
 	// 1. 友だち数
-	if err := a.fetchFollowers(ctx, channelAccessToken, dateStr, data); err != nil {
+	if err := a.fetchFollowers(ctx, channelAccessToken, dateStr, report); err != nil {
 		return nil, err
 	}
 
 	// 2. メッセージ配信統計
-	if err := a.fetchMessageDelivery(ctx, channelAccessToken, dateStr, data); err != nil {
+	if err := a.fetchMessageDelivery(ctx, channelAccessToken, dateStr, report); err != nil {
 		// メッセージ配信がない日はスキップ
-		data.MessageDelivery = nil
+		report.MessageDelivery = nil
 	}
 
 	// 3. 友だち属性
-	if err := a.fetchDemographic(ctx, channelAccessToken, data); err != nil {
+	if err := a.fetchDemographic(ctx, channelAccessToken, report); err != nil {
 		// 属性データが取得できない場合はスキップ
-		data.Demographic = nil
+		report.Demographic = nil
 	}
 
-	return data, nil
+	return report, nil
 }
 
 // fetchFollowers 友だち数を取得
-func (a *lineDataAdapter) fetchFollowers(ctx context.Context, token string, dateStr string, data *LineReportData) error {
+func (a *lineDataAdapter) fetchFollowers(ctx context.Context, token string, dateStr string, report *domain.LineDailyReport) error {
 	url := fmt.Sprintf("%s/insight/followers?date=%s", lineAPIBase, dateStr)
 
 	body, err := a.doGetWithAuth(ctx, url, token)
@@ -83,15 +68,15 @@ func (a *lineDataAdapter) fetchFollowers(ctx context.Context, token string, date
 		return fmt.Errorf("%w: followers data not ready (status: %s)", domain.ErrLineAPICall, result.Status)
 	}
 
-	data.Followers = result.Followers
-	data.TargetedReaches = result.TargetedReaches
-	data.Blocks = result.Blocks
+	report.Followers = result.Followers
+	report.TargetedReaches = result.TargetedReaches
+	report.Blocks = result.Blocks
 
 	return nil
 }
 
 // fetchMessageDelivery メッセージ配信統計を取得
-func (a *lineDataAdapter) fetchMessageDelivery(ctx context.Context, token string, dateStr string, data *LineReportData) error {
+func (a *lineDataAdapter) fetchMessageDelivery(ctx context.Context, token string, dateStr string, report *domain.LineDailyReport) error {
 	url := fmt.Sprintf("%s/insight/message/delivery?date=%s", lineAPIBase, dateStr)
 
 	body, err := a.doGetWithAuth(ctx, url, token)
@@ -113,7 +98,7 @@ func (a *lineDataAdapter) fetchMessageDelivery(ctx context.Context, token string
 		return fmt.Errorf("message delivery data not ready (status: %s)", result.Status)
 	}
 
-	data.MessageDelivery = &domain.LineMessageDelivery{
+	report.MessageDelivery = &domain.LineMessageDelivery{
 		Status:      result.Status,
 		Success:     result.Success,
 		UniqueClick: result.UniqueClick,
@@ -124,7 +109,7 @@ func (a *lineDataAdapter) fetchMessageDelivery(ctx context.Context, token string
 }
 
 // fetchDemographic 友だち属性を取得
-func (a *lineDataAdapter) fetchDemographic(ctx context.Context, token string, data *LineReportData) error {
+func (a *lineDataAdapter) fetchDemographic(ctx context.Context, token string, report *domain.LineDailyReport) error {
 	url := fmt.Sprintf("%s/insight/demographic", lineAPIBase)
 
 	body, err := a.doGetWithAuth(ctx, url, token)
@@ -178,7 +163,7 @@ func (a *lineDataAdapter) fetchDemographic(ctx context.Context, token string, da
 		})
 	}
 
-	data.Demographic = demographic
+	report.Demographic = demographic
 	return nil
 }
 

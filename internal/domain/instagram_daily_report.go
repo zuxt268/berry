@@ -3,32 +3,32 @@ package domain
 import "time"
 
 type InstagramDailyReport struct {
-	ID                      uint64
-	InstagramConnectionID   int64
-	ReportDate              time.Time
-	FollowerCount           int
-	Impressions             int
-	Reach                   int
-	ProfileViews            int
-	WebsiteClicks           int
-	PostEngagement          []PostEngagement
-	AudienceDemographics    *AudienceDemographics
-	StoriesInsights         []StoriesInsight
-	FetchedAt               time.Time
-	CreatedAt               time.Time
-	UpdatedAt               time.Time
+	ID                    uint64
+	InstagramConnectionID int64
+	ReportDate            time.Time
+	FollowerCount         int
+	Impressions           int
+	Reach                 int
+	ProfileViews          int
+	WebsiteClicks         int
+	PostEngagement        []PostEngagement
+	AudienceDemographics  *AudienceDemographics
+	StoriesInsights       []StoriesInsight
+	FetchedAt             time.Time
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type PostEngagement struct {
-	MediaID    string `json:"media_id"`
-	MediaType  string `json:"media_type"`
-	Timestamp  string `json:"timestamp"`
-	LikeCount  int    `json:"like_count"`
-	Comments   int    `json:"comments"`
-	Reach      int    `json:"reach"`
-	Impressions int   `json:"impressions"`
-	Saved      int    `json:"saved"`
-	Engagement int    `json:"engagement"`
+	MediaID     string `json:"media_id"`
+	MediaType   string `json:"media_type"`
+	Timestamp   string `json:"timestamp"`
+	LikeCount   int    `json:"like_count"`
+	Comments    int    `json:"comments"`
+	Reach       int    `json:"reach"`
+	Impressions int    `json:"impressions"`
+	Saved       int    `json:"saved"`
+	Engagement  int    `json:"engagement"`
 }
 
 type AudienceDemographics struct {

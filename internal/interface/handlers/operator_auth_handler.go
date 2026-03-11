@@ -7,28 +7,32 @@ import (
 
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/interface/adapter"
 	"github.com/zuxt268/berry/internal/usecase"
 )
 
 type OperatorAuthHandler struct {
 	operatorAuthUseCase usecase.OperatorAuthUseCase
+	sessionAdapter      adapter.SessionAdapter
 }
 
 // NewOperatorAuthHandler 新しいOperatorAuthHandlerインスタンスを作成
-func NewOperatorAuthHandler(operatorAuthUseCase usecase.OperatorAuthUseCase) *OperatorAuthHandler {
+func NewOperatorAuthHandler(operatorAuthUseCase usecase.OperatorAuthUseCase, sessionAdapter adapter.SessionAdapter) *OperatorAuthHandler {
 	return &OperatorAuthHandler{
 		operatorAuthUseCase: operatorAuthUseCase,
+		sessionAdapter:      sessionAdapter,
 	}
 }
 
 // GoogleLogin Operator向けGoogle OAuth2ログインフローを開始
 func (h *OperatorAuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	slog.Info("operator login initiated")
-	url, err := h.operatorAuthUseCase.InitiateLogin(w)
+	url, state, err := h.operatorAuthUseCase.InitiateLogin()
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/operator")
 		return
 	}
+	setOAuthStateCookie(w, "operator_oauthstate", state)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
@@ -42,8 +46,21 @@ func (h *OperatorAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	operator, err := h.operatorAuthUseCase.HandleCallback(r.Context(), r, w, code, state)
+	// state検証
+	if err := verifyOAuthState(r, "operator_oauthstate", state); err != nil {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidToken, "/operator")
+		return
+	}
+	clearCookie(w, "operator_oauthstate")
+
+	operator, sessionToken, err := h.operatorAuthUseCase.HandleCallback(r.Context(), code, r.RemoteAddr, r.UserAgent())
 	if err != nil {
+		HandleErrorWithRedirect(w, r, err, "/operator")
+		return
+	}
+
+	// セッショントークンをクッキーに保存
+	if err := h.sessionAdapter.SaveSessionToken(r, w, sessionToken); err != nil {
 		HandleErrorWithRedirect(w, r, err, "/operator")
 		return
 	}
@@ -55,27 +72,36 @@ func (h *OperatorAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Requ
 // GoogleLogout Operatorログアウト処理
 func (h *OperatorAuthHandler) GoogleLogout(w http.ResponseWriter, r *http.Request) {
 	slog.Info("operator logout")
-	if err := h.operatorAuthUseCase.Logout(r.Context(), r, w); err != nil {
+
+	// セッショントークンを取得してからusecase呼び出し
+	token, _, _ := h.sessionAdapter.GetSessionToken(r)
+	if err := h.operatorAuthUseCase.Logout(r.Context(), token); err != nil {
 		HandleErrorWithRedirect(w, r, err, "/operator")
 		return
 	}
 
-	cookie := &http.Cookie{
-		Name:     "operator_oauthstate",
-		Value:    "",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv == "prod",
-		SameSite: http.SameSiteLaxMode,
-	}
-	http.SetCookie(w, cookie)
+	// セッションクッキーを削除
+	_ = h.sessionAdapter.DeleteSessionToken(r, w)
+	clearCookie(w, "operator_oauthstate")
 
 	http.Redirect(w, r, config.Env.FrontendURL+"/operator", http.StatusTemporaryRedirect)
 }
 
 // GetCurrentOperator 現在のオペレーターのセッション情報を返す
 func (h *OperatorAuthHandler) GetCurrentOperator(w http.ResponseWriter, r *http.Request) {
-	operator, authenticated, err := h.operatorAuthUseCase.GetCurrentOperator(r.Context(), r)
+	// セッショントークンを取得してからusecase呼び出し
+	token, ok, err := h.sessionAdapter.GetSessionToken(r)
+	if err != nil {
+		HandleError(w, err)
+		return
+	}
+
+	var sessionToken string
+	if ok {
+		sessionToken = token
+	}
+
+	operator, authenticated, err := h.operatorAuthUseCase.GetCurrentOperator(r.Context(), sessionToken)
 	if err != nil {
 		HandleError(w, err)
 		return

@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/adapter"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/usecase/port"
+	"github.com/zuxt268/berry/internal/filter"
 )
 
 // GSCFetchUseCase GSCデータ取得バッチのユースケース
@@ -17,15 +16,15 @@ type GSCFetchUseCase interface {
 }
 
 type gscFetchUseCase struct {
-	gscConnRepo        repository.GSCConnectionRepository
-	gscDailyReportRepo repository.GSCDailyReportRepository
-	gscDataAdapter     adapter.GSCDataAdapter
+	gscConnRepo        port.GSCConnectionRepository
+	gscDailyReportRepo port.GSCDailyReportRepository
+	gscDataAdapter     port.GSCDataAdapter
 }
 
 func NewGSCFetchUseCase(
-	gscConnRepo repository.GSCConnectionRepository,
-	gscDailyReportRepo repository.GSCDailyReportRepository,
-	gscDataAdapter adapter.GSCDataAdapter,
+	gscConnRepo port.GSCConnectionRepository,
+	gscDailyReportRepo port.GSCDailyReportRepository,
+	gscDataAdapter port.GSCDataAdapter,
 ) GSCFetchUseCase {
 	return &gscFetchUseCase{
 		gscConnRepo:        gscConnRepo,
@@ -78,25 +77,17 @@ func (u *gscFetchUseCase) Execute(ctx context.Context, targetDate time.Time) err
 }
 
 func (u *gscFetchUseCase) fetchAndSave(ctx context.Context, conn *domain.GSCConnection, targetDate time.Time) error {
-	data, err := u.gscDataAdapter.FetchDailyReport(ctx, conn.RefreshToken, conn.SiteURL, targetDate)
+	report, err := u.gscDataAdapter.FetchDailyReport(ctx, conn.RefreshToken, conn.SiteURL, targetDate)
 	if err != nil {
 		return err
 	}
 
 	now := time.Now()
-	report := &domain.GSCDailyReport{
-		GSCConnectionID:  conn.ID,
-		ReportDate:       targetDate,
-		Impressions:      data.Impressions,
-		Clicks:           data.Clicks,
-		CTR:              data.CTR,
-		AveragePosition:  data.AveragePosition,
-		KeywordBreakdown: data.KeywordBreakdown,
-		PageBreakdown:    data.PageBreakdown,
-		FetchedAt:        now,
-		CreatedAt:        now,
-		UpdatedAt:        now,
-	}
+	report.GSCConnectionID = conn.ID
+	report.ReportDate = targetDate
+	report.FetchedAt = now
+	report.CreatedAt = now
+	report.UpdatedAt = now
 
 	return u.gscDailyReportRepo.Upsert(ctx, report)
 }

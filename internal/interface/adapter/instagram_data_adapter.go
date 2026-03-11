@@ -9,65 +9,47 @@ import (
 	"time"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
 
 const instagramGraphAPIBase = "https://graph.facebook.com/v21.0"
 
-// InstagramDataAdapter Instagram Graph APIからレポートデータを取得するアダプター
-//
-//go:generate mockgen -source=$GOFILE -destination=./mock/mock_$GOFILE -package mock
-type InstagramDataAdapter interface {
-	FetchDailyReport(ctx context.Context, accessToken string, igAccountID string, date time.Time) (*InstagramReportData, error)
-}
-
-// InstagramReportData Instagramから取得したレポートデータ
-type InstagramReportData struct {
-	FollowerCount        int
-	Impressions          int
-	Reach                int
-	ProfileViews         int
-	WebsiteClicks        int
-	PostEngagements      []domain.PostEngagement
-	AudienceDemographics *domain.AudienceDemographics
-	StoriesInsights      []domain.StoriesInsight
-}
-
 type instagramDataAdapter struct{}
 
-func NewInstagramDataAdapter() InstagramDataAdapter {
+func NewInstagramDataAdapter() port.InstagramDataAdapter {
 	return &instagramDataAdapter{}
 }
 
-func (a *instagramDataAdapter) FetchDailyReport(ctx context.Context, accessToken string, igAccountID string, date time.Time) (*InstagramReportData, error) {
-	data := &InstagramReportData{}
+func (a *instagramDataAdapter) FetchDailyReport(ctx context.Context, accessToken string, igAccountID string, date time.Time) (*domain.InstagramDailyReport, error) {
+	report := &domain.InstagramDailyReport{}
 
 	// 1. アカウントレベル日次インサイト
-	if err := a.fetchAccountInsights(ctx, accessToken, igAccountID, date, data); err != nil {
+	if err := a.fetchAccountInsights(ctx, accessToken, igAccountID, date, report); err != nil {
 		return nil, err
 	}
 
 	// 2. 投稿別エンゲージメント
-	if err := a.fetchPostEngagements(ctx, accessToken, igAccountID, date, data); err != nil {
+	if err := a.fetchPostEngagements(ctx, accessToken, igAccountID, date, report); err != nil {
 		return nil, err
 	}
 
 	// 3. フォロワー属性（lifetime）
-	if err := a.fetchAudienceDemographics(ctx, accessToken, igAccountID, data); err != nil {
+	if err := a.fetchAudienceDemographics(ctx, accessToken, igAccountID, report); err != nil {
 		// フォロワー属性はフォロワー100人未満だと取得不可の場合があるのでスキップ
-		data.AudienceDemographics = nil
+		report.AudienceDemographics = nil
 	}
 
 	// 4. ストーリーズインサイト
-	if err := a.fetchStoriesInsights(ctx, accessToken, igAccountID, data); err != nil {
+	if err := a.fetchStoriesInsights(ctx, accessToken, igAccountID, report); err != nil {
 		// ストーリーズがない場合はスキップ
-		data.StoriesInsights = nil
+		report.StoriesInsights = nil
 	}
 
-	return data, nil
+	return report, nil
 }
 
 // fetchAccountInsights アカウントレベルの日次インサイトを取得
-func (a *instagramDataAdapter) fetchAccountInsights(ctx context.Context, accessToken string, igAccountID string, date time.Time, data *InstagramReportData) error {
+func (a *instagramDataAdapter) fetchAccountInsights(ctx context.Context, accessToken string, igAccountID string, date time.Time, report *domain.InstagramDailyReport) error {
 	since := date.Unix()
 	until := date.AddDate(0, 0, 1).Unix()
 
@@ -100,15 +82,15 @@ func (a *instagramDataAdapter) fetchAccountInsights(ctx context.Context, accessT
 		value := metric.Values[0].Value
 		switch metric.Name {
 		case "follower_count":
-			data.FollowerCount = value
+			report.FollowerCount = value
 		case "impressions":
-			data.Impressions = value
+			report.Impressions = value
 		case "reach":
-			data.Reach = value
+			report.Reach = value
 		case "profile_views":
-			data.ProfileViews = value
+			report.ProfileViews = value
 		case "website_clicks":
-			data.WebsiteClicks = value
+			report.WebsiteClicks = value
 		}
 	}
 
@@ -116,7 +98,7 @@ func (a *instagramDataAdapter) fetchAccountInsights(ctx context.Context, accessT
 }
 
 // fetchPostEngagements 投稿別エンゲージメントを取得
-func (a *instagramDataAdapter) fetchPostEngagements(ctx context.Context, accessToken string, igAccountID string, date time.Time, data *InstagramReportData) error {
+func (a *instagramDataAdapter) fetchPostEngagements(ctx context.Context, accessToken string, igAccountID string, date time.Time, report *domain.InstagramDailyReport) error {
 	since := date.Unix()
 	until := date.AddDate(0, 0, 1).Unix()
 
@@ -188,14 +170,14 @@ func (a *instagramDataAdapter) fetchPostEngagements(ctx context.Context, accessT
 			}
 		}
 
-		data.PostEngagements = append(data.PostEngagements, engagement)
+		report.PostEngagement = append(report.PostEngagement, engagement)
 	}
 
 	return nil
 }
 
 // fetchAudienceDemographics フォロワー属性を取得（lifetime）
-func (a *instagramDataAdapter) fetchAudienceDemographics(ctx context.Context, accessToken string, igAccountID string, data *InstagramReportData) error {
+func (a *instagramDataAdapter) fetchAudienceDemographics(ctx context.Context, accessToken string, igAccountID string, report *domain.InstagramDailyReport) error {
 	url := fmt.Sprintf(
 		"%s/%s/insights?metric=audience_city,audience_country,audience_gender_age&period=lifetime&access_token=%s",
 		instagramGraphAPIBase, igAccountID, accessToken,
@@ -250,12 +232,12 @@ func (a *instagramDataAdapter) fetchAudienceDemographics(ctx context.Context, ac
 		}
 	}
 
-	data.AudienceDemographics = demographics
+	report.AudienceDemographics = demographics
 	return nil
 }
 
 // fetchStoriesInsights ストーリーズインサイトを取得
-func (a *instagramDataAdapter) fetchStoriesInsights(ctx context.Context, accessToken string, igAccountID string, data *InstagramReportData) error {
+func (a *instagramDataAdapter) fetchStoriesInsights(ctx context.Context, accessToken string, igAccountID string, report *domain.InstagramDailyReport) error {
 	// アクティブなストーリーズを取得
 	url := fmt.Sprintf(
 		"%s/%s/stories?fields=id,timestamp&access_token=%s",
@@ -321,7 +303,7 @@ func (a *instagramDataAdapter) fetchStoriesInsights(ctx context.Context, accessT
 			}
 		}
 
-		data.StoriesInsights = append(data.StoriesInsights, insight)
+		report.StoriesInsights = append(report.StoriesInsights, insight)
 	}
 
 	return nil

@@ -6,15 +6,12 @@ import (
 
 	"github.com/zuxt268/berry/internal/domain"
 	"github.com/zuxt268/berry/internal/infrastructure"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type BaseRepository interface {
-	WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error
-}
 
 func NewBaseRepository(
 	dbDriver infrastructure.DBDriver,
-) BaseRepository {
+) port.BaseRepository {
 	return &baseRepository{
 		dbDriver: dbDriver,
 	}

@@ -21,6 +21,7 @@ type Container struct {
 	GBPAuthHandler       *handlers.GBPAuthHandler
 	InstagramAuthHandler *handlers.InstagramAuthHandler
 	LineAuthHandler      *handlers.LineAuthHandler
+	ReportHandler        *handlers.ReportHandler
 	DBClose              func()
 }
 
@@ -74,30 +75,45 @@ func NewContainer() (*Container, error) {
 	lineTokenAdapter := adapter.NewLineTokenAdapter()
 	lineConnectionRepository := repository.NewLineConnectionRepository(dbDriver)
 
+	// Daily Report Repositories
+	ga4DailyReportRepository := repository.NewGA4DailyReportRepository(dbDriver)
+	gscDailyReportRepository := repository.NewGSCDailyReportRepository(dbDriver)
+	gbpDailyReportRepository := repository.NewGBPDailyReportRepository(dbDriver)
+	instagramDailyReportRepository := repository.NewInstagramDailyReportRepository(dbDriver)
+	lineDailyReportRepository := repository.NewLineDailyReportRepository(dbDriver)
+
 	// Usecases
 	userUsecase := usecase.NewUserUsecase(baseRepository, userRepository)
 	operatorUsecase := usecase.NewOperatorUsecase(baseRepository, operatorRepository)
-	userAuthUseCase := usecase.NewAuthUseCase(userOAuthAdapter, userSessionAdapter, userRepository, userSessionRepository)
-	operatorAuthUseCase := usecase.NewOperatorAuthUseCase(operatorOAuthAdapter, operatorSessionAdapter, operatorRepository, operatorSessionRepository)
+	userAuthUseCase := usecase.NewAuthUseCase(userOAuthAdapter, userRepository, userSessionRepository)
+	operatorAuthUseCase := usecase.NewOperatorAuthUseCase(operatorOAuthAdapter, operatorRepository, operatorSessionRepository)
 	ga4AuthUseCase := usecase.NewGA4AuthUseCase(ga4OAuthAdapter, ga4ConnectionRepository)
 	gscAuthUseCase := usecase.NewGSCAuthUseCase(gscOAuthAdapter, gscConnectionRepository)
 	gbpAuthUseCase := usecase.NewGBPAuthUseCase(gbpOAuthAdapter, gbpConnectionRepository)
 	instagramAuthUseCase := usecase.NewInstagramAuthUseCase(instagramOAuthAdapter, instagramConnectionRepository)
 	lineAuthUseCase := usecase.NewLineAuthUseCase(lineTokenAdapter, lineConnectionRepository)
 
+	// Report Usecases
+	ga4ReportUseCase := usecase.NewGA4ReportUseCase(ga4ConnectionRepository, ga4DailyReportRepository)
+	gscReportUseCase := usecase.NewGSCReportUseCase(gscConnectionRepository, gscDailyReportRepository)
+	gbpReportUseCase := usecase.NewGBPReportUseCase(gbpConnectionRepository, gbpDailyReportRepository)
+	instagramReportUseCase := usecase.NewInstagramReportUseCase(instagramConnectionRepository, instagramDailyReportRepository)
+	lineReportUseCase := usecase.NewLineReportUseCase(lineConnectionRepository, lineDailyReportRepository)
+
 	// Handlers
 	userHandler := handlers.NewUserHandler(userUsecase)
 	operatorHandler := handlers.NewOperatorHandler(operatorUsecase)
-	userAuthHandler := handlers.NewUserAuthHandler(userAuthUseCase)
-	operatorAuthHandler := handlers.NewOperatorAuthHandler(operatorAuthUseCase)
+	userAuthHandler := handlers.NewUserAuthHandler(userAuthUseCase, userSessionAdapter)
+	operatorAuthHandler := handlers.NewOperatorAuthHandler(operatorAuthUseCase, operatorSessionAdapter)
 	ga4AuthHandler := handlers.NewGA4AuthHandler(ga4AuthUseCase)
 	gscAuthHandler := handlers.NewGSCAuthHandler(gscAuthUseCase)
 	gbpAuthHandler := handlers.NewGBPAuthHandler(gbpAuthUseCase)
 	instagramAuthHandler := handlers.NewInstagramAuthHandler(instagramAuthUseCase)
 	lineAuthHandler := handlers.NewLineAuthHandler(lineAuthUseCase)
+	reportHandler := handlers.NewReportHandler(ga4ReportUseCase, gscReportUseCase, gbpReportUseCase, instagramReportUseCase, lineReportUseCase)
 
 	// Middleware
-	authMiddleware := xmiddleware.NewAuthMiddleware(userAuthUseCase, operatorAuthUseCase)
+	authMiddleware := xmiddleware.NewAuthMiddleware(userAuthUseCase, operatorAuthUseCase, userSessionAdapter, operatorSessionAdapter)
 
 	return &Container{
 		AuthMiddleware:       authMiddleware,
@@ -110,6 +126,7 @@ func NewContainer() (*Container, error) {
 		GBPAuthHandler:       gbpAuthHandler,
 		InstagramAuthHandler: instagramAuthHandler,
 		LineAuthHandler:      lineAuthHandler,
+		ReportHandler:        reportHandler,
 		DBClose:              dbClose,
 	}, nil
 }

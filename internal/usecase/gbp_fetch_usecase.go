@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/adapter"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/usecase/port"
+	"github.com/zuxt268/berry/internal/filter"
 )
 
 // GBPFetchUseCase GBPデータ取得バッチのユースケース
@@ -17,15 +16,15 @@ type GBPFetchUseCase interface {
 }
 
 type gbpFetchUseCase struct {
-	gbpConnRepo        repository.GBPConnectionRepository
-	gbpDailyReportRepo repository.GBPDailyReportRepository
-	gbpDataAdapter     adapter.GBPDataAdapter
+	gbpConnRepo        port.GBPConnectionRepository
+	gbpDailyReportRepo port.GBPDailyReportRepository
+	gbpDataAdapter     port.GBPDataAdapter
 }
 
 func NewGBPFetchUseCase(
-	gbpConnRepo repository.GBPConnectionRepository,
-	gbpDailyReportRepo repository.GBPDailyReportRepository,
-	gbpDataAdapter adapter.GBPDataAdapter,
+	gbpConnRepo port.GBPConnectionRepository,
+	gbpDailyReportRepo port.GBPDailyReportRepository,
+	gbpDataAdapter port.GBPDataAdapter,
 ) GBPFetchUseCase {
 	return &gbpFetchUseCase{
 		gbpConnRepo:        gbpConnRepo,
@@ -78,26 +77,17 @@ func (u *gbpFetchUseCase) Execute(ctx context.Context, targetDate time.Time) err
 }
 
 func (u *gbpFetchUseCase) fetchAndSave(ctx context.Context, conn *domain.GBPConnection, targetDate time.Time) error {
-	data, err := u.gbpDataAdapter.FetchDailyReport(ctx, conn.RefreshToken, conn.AccountID, conn.LocationID, targetDate)
+	report, err := u.gbpDataAdapter.FetchDailyReport(ctx, conn.RefreshToken, conn.AccountID, conn.LocationID, targetDate)
 	if err != nil {
 		return err
 	}
 
 	now := time.Now()
-	report := &domain.GBPDailyReport{
-		GBPConnectionID:      conn.ID,
-		ReportDate:           targetDate,
-		ProfileViews:         data.ProfileViews,
-		PhoneCalls:           data.PhoneCalls,
-		DirectionRequests:    data.DirectionRequests,
-		PhotoViews:           data.PhotoViews,
-		ReviewCount:          data.ReviewCount,
-		AverageRating:        data.AverageRating,
-		SearchQueryBreakdown: data.SearchQueryBreakdown,
-		FetchedAt:            now,
-		CreatedAt:            now,
-		UpdatedAt:            now,
-	}
+	report.GBPConnectionID = conn.ID
+	report.ReportDate = targetDate
+	report.FetchedAt = now
+	report.CreatedAt = now
+	report.UpdatedAt = now
 
 	return u.gbpDailyReportRepo.Upsert(ctx, report)
 }

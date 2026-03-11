@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/interface/dto/responses"
 	"github.com/zuxt268/berry/internal/usecase"
 )
 
@@ -31,28 +32,28 @@ func (h *OperatorHandler) GetByUID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, operator)
+	respondJSON(w, http.StatusOK, responses.ToOperatorResponse(operator))
 }
 
 // Gets GET /api/operators
 func (h *OperatorHandler) Gets(w http.ResponseWriter, r *http.Request) {
-	var input domain.GetOperatorsRequest
+	var input usecase.GetOperatorsInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		input = domain.GetOperatorsRequest{}
+		input = usecase.GetOperatorsInput{}
 	}
 
-	resp, err := h.operatorUsecase.Gets(r.Context(), input)
+	operators, total, err := h.operatorUsecase.Gets(r.Context(), input)
 	if err != nil {
 		HandleError(w, err)
 		return
 	}
 
-	respondJSON(w, http.StatusOK, resp)
+	respondJSON(w, http.StatusOK, responses.ToOperatorsResponse(operators, total))
 }
 
 // Create POST /api/operators
 func (h *OperatorHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var input domain.CreateOperatorRequest
+	var input usecase.CreateOperatorInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		HandleError(w, domain.ErrInvalidArgument)
 		return
@@ -63,13 +64,13 @@ func (h *OperatorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.operatorUsecase.Create(r.Context(), input)
+	operator, err := h.operatorUsecase.Create(r.Context(), input)
 	if err != nil {
 		HandleError(w, err)
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, resp)
+	respondJSON(w, http.StatusCreated, responses.ToOperatorResponse(operator))
 }
 
 // Update PUT /api/operators/{uid}
@@ -80,20 +81,20 @@ func (h *OperatorHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input domain.UpdateOperatorRequest
+	var input usecase.UpdateOperatorInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		HandleError(w, domain.ErrInvalidArgument)
 		return
 	}
 	input.UID = uid
 
-	resp, err := h.operatorUsecase.Update(r.Context(), input)
+	operator, err := h.operatorUsecase.Update(r.Context(), input)
 	if err != nil {
 		HandleError(w, err)
 		return
 	}
 
-	respondJSON(w, http.StatusOK, resp)
+	respondJSON(w, http.StatusOK, responses.ToOperatorResponse(operator))
 }
 
 // Delete DELETE /api/operators/{uid}

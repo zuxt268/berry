@@ -11,35 +11,18 @@ import (
 
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/usecase/port"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	businessprofileperformance "google.golang.org/api/businessprofileperformance/v1"
 	"google.golang.org/api/option"
 )
 
-// GBPDataAdapter Google Business Profile APIからレポートデータを取得するアダプター
-//
-//go:generate mockgen -source=$GOFILE -destination=./mock/mock_$GOFILE -package mock
-type GBPDataAdapter interface {
-	FetchDailyReport(ctx context.Context, refreshToken string, accountID string, locationID string, date time.Time) (*GBPReportData, error)
-}
-
-// GBPReportData GBPから取得したレポートデータ
-type GBPReportData struct {
-	ProfileViews         int
-	PhoneCalls           int
-	DirectionRequests    int
-	PhotoViews           int
-	ReviewCount          int
-	AverageRating        float64
-	SearchQueryBreakdown []domain.SearchQueryBreakdown
-}
-
 type gbpDataAdapter struct {
 	oauthConfig *oauth2.Config
 }
 
-func NewGBPDataAdapter() GBPDataAdapter {
+func NewGBPDataAdapter() port.GBPDataAdapter {
 	oauthConfig := &oauth2.Config{
 		ClientID:     config.Env.GoogleClientID,
 		ClientSecret: config.Env.GoogleClientSecret,
@@ -51,7 +34,7 @@ func NewGBPDataAdapter() GBPDataAdapter {
 	return &gbpDataAdapter{oauthConfig: oauthConfig}
 }
 
-func (a *gbpDataAdapter) FetchDailyReport(ctx context.Context, refreshToken string, accountID string, locationID string, date time.Time) (*GBPReportData, error) {
+func (a *gbpDataAdapter) FetchDailyReport(ctx context.Context, refreshToken string, accountID string, locationID string, date time.Time) (*domain.GBPDailyReport, error) {
 	service, err := a.buildService(ctx, refreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrGBPTokenRefresh, err)
@@ -62,24 +45,24 @@ func (a *gbpDataAdapter) FetchDailyReport(ctx context.Context, refreshToken stri
 		locationID = "locations/" + locationID
 	}
 
-	data := &GBPReportData{}
+	report := &domain.GBPDailyReport{}
 
 	// リクエスト1: パフォーマンス指標（閲覧数・電話・ルート検索など）
-	if err := a.fetchPerformanceMetrics(ctx, service, locationID, date, data); err != nil {
+	if err := a.fetchPerformanceMetrics(ctx, service, locationID, date, report); err != nil {
 		return nil, err
 	}
 
 	// リクエスト2: 検索キーワード（月次データ）
-	if err := a.fetchSearchKeywords(ctx, service, locationID, date, data); err != nil {
+	if err := a.fetchSearchKeywords(ctx, service, locationID, date, report); err != nil {
 		return nil, err
 	}
 
 	// リクエスト3: クチコミ数・平均評価（REST直接呼び出し）
-	if err := a.fetchReviews(ctx, refreshToken, accountID, locationID, data); err != nil {
+	if err := a.fetchReviews(ctx, refreshToken, accountID, locationID, report); err != nil {
 		return nil, err
 	}
 
-	return data, nil
+	return report, nil
 }
 
 func (a *gbpDataAdapter) buildService(ctx context.Context, refreshToken string) (*businessprofileperformance.Service, error) {
@@ -95,7 +78,7 @@ func (a *gbpDataAdapter) buildService(ctx context.Context, refreshToken string) 
 }
 
 // fetchPerformanceMetrics パフォーマンス指標を一括取得
-func (a *gbpDataAdapter) fetchPerformanceMetrics(ctx context.Context, service *businessprofileperformance.Service, locationID string, date time.Time, data *GBPReportData) error {
+func (a *gbpDataAdapter) fetchPerformanceMetrics(ctx context.Context, service *businessprofileperformance.Service, locationID string, date time.Time, report *domain.GBPDailyReport) error {
 	year := int64(date.Year())
 	month := int64(date.Month())
 	day := int64(date.Day())
@@ -136,15 +119,15 @@ func (a *gbpDataAdapter) fetchPerformanceMetrics(ctx context.Context, service *b
 				"BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
 				"BUSINESS_IMPRESSIONS_MOBILE_MAPS",
 				"BUSINESS_IMPRESSIONS_MOBILE_SEARCH":
-				data.ProfileViews += value
+				report.ProfileViews += value
 			case "BUSINESS_DIRECTION_REQUESTS":
-				data.DirectionRequests = value
+				report.DirectionRequests = value
 			case "CALL_CLICKS":
-				data.PhoneCalls = value
+				report.PhoneCalls = value
 			case "WEBSITE_CLICKS":
 				// WebsiteClicksはPhotoViewsの代わりに取得
 				// GBP APIに写真閲覧数の直接的な指標がないため、ウェブサイトクリック数で代用
-				data.PhotoViews = value
+				report.PhotoViews = value
 			}
 		}
 	}
@@ -153,7 +136,7 @@ func (a *gbpDataAdapter) fetchPerformanceMetrics(ctx context.Context, service *b
 }
 
 // fetchSearchKeywords 検索キーワード別インプレッションを取得（月次データ）
-func (a *gbpDataAdapter) fetchSearchKeywords(ctx context.Context, service *businessprofileperformance.Service, locationID string, date time.Time, data *GBPReportData) error {
+func (a *gbpDataAdapter) fetchSearchKeywords(ctx context.Context, service *businessprofileperformance.Service, locationID string, date time.Time, report *domain.GBPDailyReport) error {
 	year := int64(date.Year())
 	month := int64(date.Month())
 
@@ -177,7 +160,7 @@ func (a *gbpDataAdapter) fetchSearchKeywords(ctx context.Context, service *busin
 		if kw.InsightsValue != nil {
 			impressions = int(kw.InsightsValue.Value)
 		}
-		data.SearchQueryBreakdown = append(data.SearchQueryBreakdown, domain.SearchQueryBreakdown{
+		report.SearchQueryBreakdown = append(report.SearchQueryBreakdown, domain.SearchQueryBreakdown{
 			Query:       kw.SearchKeyword,
 			Impressions: impressions,
 		})
@@ -200,7 +183,7 @@ type gbpReview struct {
 }
 
 // fetchReviews クチコミ数・平均評価をREST直接呼び出しで取得
-func (a *gbpDataAdapter) fetchReviews(ctx context.Context, refreshToken string, accountID, locationID string, data *GBPReportData) error {
+func (a *gbpDataAdapter) fetchReviews(ctx context.Context, refreshToken string, accountID, locationID string, report *domain.GBPDailyReport) error {
 	// アクセストークンを取得
 	token := &oauth2.Token{RefreshToken: refreshToken}
 	tokenSource := a.oauthConfig.TokenSource(ctx, token)
@@ -243,8 +226,8 @@ func (a *gbpDataAdapter) fetchReviews(ctx context.Context, refreshToken string, 
 		return fmt.Errorf("%w: reviews decode: %v", domain.ErrGBPAPICall, err)
 	}
 
-	data.ReviewCount = result.TotalReviewCount
-	data.AverageRating = result.AverageRating
+	report.ReviewCount = result.TotalReviewCount
+	report.AverageRating = result.AverageRating
 
 	return nil
 }

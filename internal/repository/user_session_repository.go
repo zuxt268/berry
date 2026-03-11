@@ -4,22 +4,15 @@ import (
 	"context"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type UserSessionRepository interface {
-	Create(ctx context.Context, session *domain.UserSession) error
-	Get(ctx context.Context, f *filter.UserSessionFilter) (*domain.UserSession, error)
-	FindAll(ctx context.Context, f *filter.UserSessionFilter) ([]*domain.UserSession, error)
-	Exists(ctx context.Context, f *filter.UserSessionFilter) (bool, error)
-	Delete(ctx context.Context, f *filter.UserSessionFilter) error
-}
 
 func NewUserSessionRepository(
 	dbDriver infrastructure.DBDriver,
-) UserSessionRepository {
+) port.UserSessionRepository {
 	return &customerUserSessionRepository{
 		dbDriver: dbDriver,
 	}

@@ -3,23 +3,20 @@ package usecase
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/adapter"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/filter"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
 
 // GBPAuthUseCase GBP OAuth連携ユースケースのインターフェース
 type GBPAuthUseCase interface {
-	// InitiateConnect GBP OAuth連携フローを開始
-	InitiateConnect(r *http.Request, w http.ResponseWriter, locationID, accountID string) (string, error)
+	// InitiateConnect GBP OAuth連携フローを開始し、認証URLとstateを返す
+	InitiateConnect(locationID, accountID string) (authURL string, state string, err error)
 	// HandleCallback OAuthコールバックを処理してGBP連携を保存
-	HandleCallback(ctx context.Context, r *http.Request, w http.ResponseWriter, userID uint64, code, state string) (*domain.GBPConnection, error)
+	HandleCallback(ctx context.Context, userID uint64, code, locationID, accountID string) (*domain.GBPConnection, error)
 	// GetConnections ユーザーのGBP連携一覧を取得
 	GetConnections(ctx context.Context, userID uint64) ([]*domain.GBPConnection, error)
 	// Disconnect GBP連携を解除
@@ -27,14 +24,14 @@ type GBPAuthUseCase interface {
 }
 
 type gbpAuthUseCase struct {
-	gbpOAuthAdapter adapter.GBPOAuthAdapter
-	gbpConnRepo     repository.GBPConnectionRepository
+	gbpOAuthAdapter port.GBPOAuthAdapter
+	gbpConnRepo     port.GBPConnectionRepository
 }
 
 // NewGBPAuthUseCase 新しいGBPAuthUseCaseインスタンスを作成
 func NewGBPAuthUseCase(
-	gbpOAuthAdapter adapter.GBPOAuthAdapter,
-	gbpConnRepo repository.GBPConnectionRepository,
+	gbpOAuthAdapter port.GBPOAuthAdapter,
+	gbpConnRepo port.GBPConnectionRepository,
 ) GBPAuthUseCase {
 	return &gbpAuthUseCase{
 		gbpOAuthAdapter: gbpOAuthAdapter,
@@ -43,79 +40,18 @@ func NewGBPAuthUseCase(
 }
 
 // InitiateConnect GBP OAuth連携フローを開始
-func (u *gbpAuthUseCase) InitiateConnect(r *http.Request, w http.ResponseWriter, locationID, accountID string) (string, error) {
+func (u *gbpAuthUseCase) InitiateConnect(locationID, accountID string) (string, string, error) {
 	state, err := generateState()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-
-	// stateをクッキーに保存
-	stateCookie := &http.Cookie{
-		Name:     "gbp_oauthstate",
-		Value:    state,
-		MaxAge:   300,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv != "local",
-		SameSite: http.SameSiteLaxMode,
-		Path:     "/",
-	}
-	http.SetCookie(w, stateCookie)
-
-	// location_idをクッキーに保存
-	locationCookie := &http.Cookie{
-		Name:     "gbp_location_id",
-		Value:    locationID,
-		MaxAge:   300,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv != "local",
-		SameSite: http.SameSiteLaxMode,
-		Path:     "/",
-	}
-	http.SetCookie(w, locationCookie)
-
-	// account_idをクッキーに保存
-	accountCookie := &http.Cookie{
-		Name:     "gbp_account_id",
-		Value:    accountID,
-		MaxAge:   300,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv != "local",
-		SameSite: http.SameSiteLaxMode,
-		Path:     "/",
-	}
-	http.SetCookie(w, accountCookie)
 
 	url := u.gbpOAuthAdapter.GetAuthURL(state)
-	return url, nil
+	return url, state, nil
 }
 
 // HandleCallback OAuthコールバックを処理してGBP連携を保存
-func (u *gbpAuthUseCase) HandleCallback(ctx context.Context, r *http.Request, w http.ResponseWriter, userID uint64, code, state string) (*domain.GBPConnection, error) {
-	// state検証
-	stateCookie, err := r.Cookie("gbp_oauthstate")
-	if err != nil || state != stateCookie.Value {
-		return nil, domain.ErrInvalidToken
-	}
-
-	// location_id取得
-	locationCookie, err := r.Cookie("gbp_location_id")
-	if err != nil || locationCookie.Value == "" {
-		return nil, domain.ErrInvalidArgument
-	}
-	locationID := locationCookie.Value
-
-	// account_id取得
-	accountCookie, err := r.Cookie("gbp_account_id")
-	if err != nil || accountCookie.Value == "" {
-		return nil, domain.ErrInvalidArgument
-	}
-	accountID := accountCookie.Value
-
-	// クッキー削除
-	clearCookie(w, "gbp_oauthstate")
-	clearCookie(w, "gbp_location_id")
-	clearCookie(w, "gbp_account_id")
-
+func (u *gbpAuthUseCase) HandleCallback(ctx context.Context, userID uint64, code, locationID, accountID string) (*domain.GBPConnection, error) {
 	// コードをトークンに交換
 	result, err := u.gbpOAuthAdapter.ExchangeCode(ctx, code)
 	if err != nil {

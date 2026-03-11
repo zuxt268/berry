@@ -8,18 +8,16 @@ import (
 	"github.com/zuxt268/berry/internal/config"
 )
 
-type sessionStore struct {
-	store       *sessions.CookieStore
-	sessionName string
-}
-
 // SessionAdapter セッションクッキー操作のインターフェース
-//
-//go:generate mockgen -source=$GOFILE -destination=./mock/mock_$GOFILE -package mock
 type SessionAdapter interface {
 	SaveSessionToken(r *http.Request, w http.ResponseWriter, token string) error
 	GetSessionToken(r *http.Request) (string, bool, error)
 	DeleteSessionToken(r *http.Request, w http.ResponseWriter) error
+}
+
+type sessionStore struct {
+	store       *sessions.CookieStore
+	sessionName string
 }
 
 func NewSessionStore(sessionName string) SessionAdapter {

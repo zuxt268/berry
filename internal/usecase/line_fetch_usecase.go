@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/adapter"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/usecase/port"
+	"github.com/zuxt268/berry/internal/filter"
 )
 
 // LineFetchUseCase LINEデータ取得バッチのユースケース
@@ -17,15 +16,15 @@ type LineFetchUseCase interface {
 }
 
 type lineFetchUseCase struct {
-	lineConnRepo        repository.LineConnectionRepository
-	lineDailyReportRepo repository.LineDailyReportRepository
-	lineDataAdapter     adapter.LineDataAdapter
+	lineConnRepo        port.LineConnectionRepository
+	lineDailyReportRepo port.LineDailyReportRepository
+	lineDataAdapter     port.LineDataAdapter
 }
 
 func NewLineFetchUseCase(
-	lineConnRepo repository.LineConnectionRepository,
-	lineDailyReportRepo repository.LineDailyReportRepository,
-	lineDataAdapter adapter.LineDataAdapter,
+	lineConnRepo port.LineConnectionRepository,
+	lineDailyReportRepo port.LineDailyReportRepository,
+	lineDataAdapter port.LineDataAdapter,
 ) LineFetchUseCase {
 	return &lineFetchUseCase{
 		lineConnRepo:        lineConnRepo,
@@ -78,24 +77,17 @@ func (u *lineFetchUseCase) Execute(ctx context.Context, targetDate time.Time) er
 }
 
 func (u *lineFetchUseCase) fetchAndSave(ctx context.Context, conn *domain.LineConnection, targetDate time.Time) error {
-	data, err := u.lineDataAdapter.FetchDailyReport(ctx, conn.ChannelAccessToken, targetDate)
+	report, err := u.lineDataAdapter.FetchDailyReport(ctx, conn.ChannelAccessToken, targetDate)
 	if err != nil {
 		return err
 	}
 
 	now := time.Now()
-	report := &domain.LineDailyReport{
-		LineConnectionID: conn.ID,
-		ReportDate:       targetDate,
-		Followers:        data.Followers,
-		TargetedReaches:  data.TargetedReaches,
-		Blocks:           data.Blocks,
-		MessageDelivery:  data.MessageDelivery,
-		Demographic:      data.Demographic,
-		FetchedAt:        now,
-		CreatedAt:        now,
-		UpdatedAt:        now,
-	}
+	report.LineConnectionID = conn.ID
+	report.ReportDate = targetDate
+	report.FetchedAt = now
+	report.CreatedAt = now
+	report.UpdatedAt = now
 
 	return u.lineDailyReportRepo.Upsert(ctx, report)
 }

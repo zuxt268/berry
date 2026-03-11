@@ -7,26 +7,25 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/adapter"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/filter"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
 
 // LineAuthUseCase LINE公式アカウント連携ユースケースのインターフェース
 type LineAuthUseCase interface {
-	Connect(ctx context.Context, userID uint64, req *domain.ConnectLineRequest) (*domain.LineConnection, error)
+	Connect(ctx context.Context, userID uint64, req *ConnectLineInput) (*domain.LineConnection, error)
 	GetConnections(ctx context.Context, userID uint64) ([]*domain.LineConnection, error)
 	Disconnect(ctx context.Context, userID uint64, uid string) error
 }
 
 type lineAuthUseCase struct {
-	lineTokenAdapter adapter.LineTokenAdapter
-	lineConnRepo     repository.LineConnectionRepository
+	lineTokenAdapter port.LineTokenAdapter
+	lineConnRepo     port.LineConnectionRepository
 }
 
 func NewLineAuthUseCase(
-	lineTokenAdapter adapter.LineTokenAdapter,
-	lineConnRepo repository.LineConnectionRepository,
+	lineTokenAdapter port.LineTokenAdapter,
+	lineConnRepo port.LineConnectionRepository,
 ) LineAuthUseCase {
 	return &lineAuthUseCase{
 		lineTokenAdapter: lineTokenAdapter,
@@ -35,7 +34,7 @@ func NewLineAuthUseCase(
 }
 
 // Connect トークンを検証してLINE連携を保存
-func (u *lineAuthUseCase) Connect(ctx context.Context, userID uint64, req *domain.ConnectLineRequest) (*domain.LineConnection, error) {
+func (u *lineAuthUseCase) Connect(ctx context.Context, userID uint64, req *ConnectLineInput) (*domain.LineConnection, error) {
 	// トークン有効性を検証し、Bot情報を取得
 	botInfo, err := u.lineTokenAdapter.ValidateToken(ctx, req.ChannelAccessToken)
 	if err != nil {

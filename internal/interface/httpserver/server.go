@@ -33,6 +33,7 @@ type Server struct {
 	lineAuthHandler      *handlers.LineAuthHandler
 	userHandler          *handlers.UserHandler
 	operatorHandler      *handlers.OperatorHandler
+	reportHandler        *handlers.ReportHandler
 }
 
 func NewServer(
@@ -66,6 +67,7 @@ func NewServer(
 		gbpAuthHandler:       container.GBPAuthHandler,
 		instagramAuthHandler: container.InstagramAuthHandler,
 		lineAuthHandler:      container.LineAuthHandler,
+		reportHandler:        container.ReportHandler,
 		server: &http.Server{
 			Addr:    addr,
 			Handler: r,
@@ -122,6 +124,10 @@ func (s *Server) registerRoutes() {
 						r.Get("/connections", s.ga4AuthHandler.GetConnections)
 						r.Delete("/connections/{uid}", s.ga4AuthHandler.Disconnect)
 					})
+					r.Group(func(r chi.Router) {
+						r.Use(s.authMiddleware.RequireAuth)
+						r.Get("/reports", s.reportHandler.GA4Reports)
+					})
 				})
 
 				r.Route("/gsc", func(r chi.Router) {
@@ -130,6 +136,10 @@ func (s *Server) registerRoutes() {
 						r.Get("/auth/callback", s.gscAuthHandler.Callback)
 						r.Get("/connections", s.gscAuthHandler.GetConnections)
 						r.Delete("/connections/{uid}", s.gscAuthHandler.Disconnect)
+					})
+					r.Group(func(r chi.Router) {
+						r.Use(s.authMiddleware.RequireAuth)
+						r.Get("/reports", s.reportHandler.GSCReports)
 					})
 				})
 
@@ -140,6 +150,10 @@ func (s *Server) registerRoutes() {
 						r.Get("/connections", s.gbpAuthHandler.GetConnections)
 						r.Delete("/connections/{uid}", s.gbpAuthHandler.Disconnect)
 					})
+					r.Group(func(r chi.Router) {
+						r.Use(s.authMiddleware.RequireAuth)
+						r.Get("/reports", s.reportHandler.GBPReports)
+					})
 				})
 
 				r.Route("/instagram", func(r chi.Router) {
@@ -149,6 +163,10 @@ func (s *Server) registerRoutes() {
 						r.Get("/connections", s.instagramAuthHandler.GetConnections)
 						r.Delete("/connections/{uid}", s.instagramAuthHandler.Disconnect)
 					})
+					r.Group(func(r chi.Router) {
+						r.Use(s.authMiddleware.RequireAuth)
+						r.Get("/reports", s.reportHandler.InstagramReports)
+					})
 				})
 
 				r.Route("/line", func(r chi.Router) {
@@ -156,6 +174,7 @@ func (s *Server) registerRoutes() {
 					r.Post("/connect", s.lineAuthHandler.Connect)
 					r.Get("/connections", s.lineAuthHandler.GetConnections)
 					r.Delete("/connections/{uid}", s.lineAuthHandler.Disconnect)
+					r.Get("/reports", s.reportHandler.LineReports)
 				})
 			})
 			r.Route("/operators", func(r chi.Router) {

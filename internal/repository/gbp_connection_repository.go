@@ -4,24 +4,17 @@ import (
 	"context"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type GBPConnectionRepository interface {
-	Find(ctx context.Context, f filter.Filter) (*domain.GBPConnection, error)
-	List(ctx context.Context, f filter.Filter) ([]*domain.GBPConnection, error)
-	Create(ctx context.Context, conn *domain.GBPConnection) (*domain.GBPConnection, error)
-	Update(ctx context.Context, conn *domain.GBPConnection, f filter.Filter) (*domain.GBPConnection, error)
-	Delete(ctx context.Context, f filter.Filter) error
-}
 
 type gbpConnectionRepository struct {
 	dbDriver infrastructure.DBDriver
 }
 
-func NewGBPConnectionRepository(dbDriver infrastructure.DBDriver) GBPConnectionRepository {
+func NewGBPConnectionRepository(dbDriver infrastructure.DBDriver) port.GBPConnectionRepository {
 	return &gbpConnectionRepository{dbDriver: dbDriver}
 }
 

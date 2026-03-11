@@ -4,22 +4,15 @@ import (
 	"context"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type OperatorSessionRepository interface {
-	Create(ctx context.Context, session *domain.OperatorSession) error
-	Get(ctx context.Context, f *filter.OperatorSessionFilter) (*domain.OperatorSession, error)
-	FindAll(ctx context.Context, f *filter.OperatorSessionFilter) ([]*domain.OperatorSession, error)
-	Exists(ctx context.Context, f *filter.OperatorSessionFilter) (bool, error)
-	Delete(ctx context.Context, f *filter.OperatorSessionFilter) error
-}
 
 func NewOperatorSessionRepository(
 	dbDriver infrastructure.DBDriver,
-) OperatorSessionRepository {
+) port.OperatorSessionRepository {
 	return &operatorSessionRepository{
 		dbDriver: dbDriver,
 	}

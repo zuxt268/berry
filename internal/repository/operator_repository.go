@@ -4,20 +4,11 @@ import (
 	"context"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type OperatorRepository interface {
-	Find(ctx context.Context, f filter.Filter) (*domain.Operator, error)
-	List(ctx context.Context, f filter.Filter) ([]*domain.Operator, error)
-	Count(ctx context.Context, f filter.Filter) (int64, error)
-	Exists(ctx context.Context, f filter.Filter) (bool, error)
-	Create(ctx context.Context, operator *domain.Operator) (*domain.Operator, error)
-	Update(ctx context.Context, operator *domain.Operator, f filter.Filter) (*domain.Operator, error)
-	Delete(ctx context.Context, f filter.Filter) error
-}
 
 type operatorRepository struct {
 	dbDriver infrastructure.DBDriver
@@ -25,7 +16,7 @@ type operatorRepository struct {
 
 func NewOperatorRepository(
 	dbDriver infrastructure.DBDriver,
-) OperatorRepository {
+) port.OperatorRepository {
 	return &operatorRepository{
 		dbDriver: dbDriver,
 	}

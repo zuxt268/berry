@@ -4,24 +4,17 @@ import (
 	"context"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type GSCConnectionRepository interface {
-	Find(ctx context.Context, f filter.Filter) (*domain.GSCConnection, error)
-	List(ctx context.Context, f filter.Filter) ([]*domain.GSCConnection, error)
-	Create(ctx context.Context, conn *domain.GSCConnection) (*domain.GSCConnection, error)
-	Update(ctx context.Context, conn *domain.GSCConnection, f filter.Filter) (*domain.GSCConnection, error)
-	Delete(ctx context.Context, f filter.Filter) error
-}
 
 type gscConnectionRepository struct {
 	dbDriver infrastructure.DBDriver
 }
 
-func NewGSCConnectionRepository(dbDriver infrastructure.DBDriver) GSCConnectionRepository {
+func NewGSCConnectionRepository(dbDriver infrastructure.DBDriver) port.GSCConnectionRepository {
 	return &gscConnectionRepository{dbDriver: dbDriver}
 }
 

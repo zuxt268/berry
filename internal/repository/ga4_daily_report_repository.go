@@ -5,22 +5,17 @@ import (
 	"encoding/json"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type GA4DailyReportRepository interface {
-	Find(ctx context.Context, f filter.Filter) (*domain.GA4DailyReport, error)
-	List(ctx context.Context, f filter.Filter) ([]*domain.GA4DailyReport, error)
-	Upsert(ctx context.Context, report *domain.GA4DailyReport) error
-}
 
 type ga4DailyReportRepository struct {
 	dbDriver infrastructure.DBDriver
 }
 
-func NewGA4DailyReportRepository(dbDriver infrastructure.DBDriver) GA4DailyReportRepository {
+func NewGA4DailyReportRepository(dbDriver infrastructure.DBDriver) port.GA4DailyReportRepository {
 	return &ga4DailyReportRepository{dbDriver: dbDriver}
 }
 

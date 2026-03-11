@@ -9,33 +9,16 @@ import (
 
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/usecase/port"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
-
-// OAuthUser OAuth認証で取得したユーザー情報
-type OAuthUser struct {
-	Sub     string
-	Email   string
-	Name    string
-	Picture string
-}
-
-// OAuthAdapter OAuth操作のインターフェース
-//
-//go:generate mockgen -source=$GOFILE -destination=./mock/mock_$GOFILE -package mock
-type OAuthAdapter interface {
-	// GetAuthURL stateパラメータ付きのOAuth認証URLを返す
-	GetAuthURL(state string) string
-	// ExchangeCode 認証コードをユーザー情報と交換
-	ExchangeCode(ctx context.Context, code string) (*OAuthUser, error)
-}
 
 type oauthClient struct {
 	config *oauth2.Config
 }
 
-func NewOAuthClient(redirectURL string) OAuthAdapter {
+func NewOAuthClient(redirectURL string) port.OAuthAdapter {
 	oauthConfig := &oauth2.Config{
 		ClientID:     config.Env.GoogleClientID,
 		ClientSecret: config.Env.GoogleClientSecret,
@@ -55,7 +38,7 @@ func (c *oauthClient) GetAuthURL(state string) string {
 }
 
 // ExchangeCode 認証コードをユーザー情報と交換
-func (c *oauthClient) ExchangeCode(ctx context.Context, code string) (*OAuthUser, error) {
+func (c *oauthClient) ExchangeCode(ctx context.Context, code string) (*port.OAuthUser, error) {
 	// コードをトークンに交換
 	token, err := c.config.Exchange(ctx, code)
 	if err != nil {
@@ -68,7 +51,7 @@ func (c *oauthClient) ExchangeCode(ctx context.Context, code string) (*OAuthUser
 		return nil, fmt.Errorf("%w: %v", domain.ErrOAuthUserInfo, err)
 	}
 
-	return &OAuthUser{
+	return &port.OAuthUser{
 		Sub:     getStringFromMap(userInfo, "id"),
 		Email:   getStringFromMap(userInfo, "email"),
 		Name:    getStringFromMap(userInfo, "name"),

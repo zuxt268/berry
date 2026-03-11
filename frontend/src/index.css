@@ -7,5 +7,29 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f0f2f5;
+  background-color: #f5f7fa;
+}
+
+/* Sidebar trigger */
+.ant-layout-sider-trigger {
+  background: #fafafa !important;
+  color: #595959 !important;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* Card hover effects */
+.kpi-card,
+.advice-card,
+.connection-card {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.kpi-card:hover,
+.connection-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+  transform: translateY(-1px);
+}
+
+.advice-card:hover {
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08) !important;
 }

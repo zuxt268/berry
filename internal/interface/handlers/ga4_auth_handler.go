@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/interface/dto/responses"
 	"github.com/zuxt268/berry/internal/interface/middleware"
 	"github.com/zuxt268/berry/internal/usecase"
 )
@@ -28,11 +28,15 @@ func (h *GA4AuthHandler) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, err := h.ga4AuthUseCase.InitiateConnect(r, w, propertyID)
+	url, state, err := h.ga4AuthUseCase.InitiateConnect(propertyID)
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/settings")
 		return
 	}
+
+	// stateとproperty_idをクッキーに保存
+	setOAuthStateCookie(w, "ga4_oauthstate", state)
+	setValueCookie(w, "ga4_property_id", propertyID)
 
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
@@ -53,7 +57,24 @@ func (h *GA4AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := h.ga4AuthUseCase.HandleCallback(r.Context(), r, w, user.ID, code, state)
+	// state検証
+	if err := verifyOAuthState(r, "ga4_oauthstate", state); err != nil {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidToken, "/settings")
+		return
+	}
+
+	// property_id取得
+	propertyID, err := getOAuthStateCookie(r, "ga4_property_id")
+	if err != nil || propertyID == "" {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidArgument, "/settings")
+		return
+	}
+
+	// クッキー削除
+	clearCookie(w, "ga4_oauthstate")
+	clearCookie(w, "ga4_property_id")
+
+	conn, err := h.ga4AuthUseCase.HandleCallback(r.Context(), user.ID, code, propertyID)
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/settings")
 		return
@@ -77,20 +98,12 @@ func (h *GA4AuthHandler) GetConnections(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	responses := make([]*domain.GA4ConnectionResponse, len(connections))
+	resp := make([]*responses.GA4ConnectionResponse, len(connections))
 	for i, c := range connections {
-		responses[i] = &domain.GA4ConnectionResponse{
-			UID:              c.UID,
-			GooglePropertyID: c.GooglePropertyID,
-			ConnectedAt:      c.ConnectedAt,
-			DisconnectedAt:   c.DisconnectedAt,
-		}
+		resp[i] = responses.ToGA4ConnectionResponse(c)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"connections": responses,
-	})
+	respondJSON(w, http.StatusOK, map[string]any{"connections": resp})
 }
 
 // Disconnect GA4連携を解除
@@ -112,7 +125,5 @@ func (h *GA4AuthHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "disconnected"})
+	respondJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
 }

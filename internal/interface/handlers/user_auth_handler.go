@@ -7,28 +7,32 @@ import (
 
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/interface/adapter"
 	"github.com/zuxt268/berry/internal/usecase"
 )
 
 type UserAuthHandler struct {
 	userAuthUseCase usecase.UserAuthUseCase
+	sessionAdapter  adapter.SessionAdapter
 }
 
 // NewUserAuthHandler 新しいAuthHandlerインスタンスを作成
-func NewUserAuthHandler(userAuthUseCase usecase.UserAuthUseCase) *UserAuthHandler {
+func NewUserAuthHandler(userAuthUseCase usecase.UserAuthUseCase, sessionAdapter adapter.SessionAdapter) *UserAuthHandler {
 	return &UserAuthHandler{
 		userAuthUseCase: userAuthUseCase,
+		sessionAdapter:  sessionAdapter,
 	}
 }
 
 // GoogleLogin Google OAuth2ログインフローを開始
 func (h *UserAuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	slog.Info("customer login initiated")
-	url, err := h.userAuthUseCase.InitiateLogin(w)
+	url, state, err := h.userAuthUseCase.InitiateLogin()
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/")
 		return
 	}
+	setOAuthStateCookie(w, "oauthstate", state)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
@@ -42,8 +46,21 @@ func (h *UserAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	user, err := h.userAuthUseCase.HandleCallback(r.Context(), r, w, code, state)
+	// state検証
+	if err := verifyOAuthState(r, "oauthstate", state); err != nil {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidToken, "/")
+		return
+	}
+	clearCookie(w, "oauthstate")
+
+	user, sessionToken, err := h.userAuthUseCase.HandleCallback(r.Context(), code, r.RemoteAddr, r.UserAgent())
 	if err != nil {
+		HandleErrorWithRedirect(w, r, err, "/")
+		return
+	}
+
+	// セッショントークンをクッキーに保存
+	if err := h.sessionAdapter.SaveSessionToken(r, w, sessionToken); err != nil {
 		HandleErrorWithRedirect(w, r, err, "/")
 		return
 	}
@@ -55,27 +72,36 @@ func (h *UserAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request)
 // GoogleLogout ログアウト処理
 func (h *UserAuthHandler) GoogleLogout(w http.ResponseWriter, r *http.Request) {
 	slog.Info("customer logout")
-	if err := h.userAuthUseCase.Logout(r.Context(), r, w); err != nil {
+
+	// セッショントークンを取得してからusecase呼び出し
+	token, _, _ := h.sessionAdapter.GetSessionToken(r)
+	if err := h.userAuthUseCase.Logout(r.Context(), token); err != nil {
 		HandleErrorWithRedirect(w, r, err, "/")
 		return
 	}
 
-	cookie := &http.Cookie{
-		Name:     "oauthstate",
-		Value:    "",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv == "prod",
-		SameSite: http.SameSiteLaxMode,
-	}
-	http.SetCookie(w, cookie)
+	// セッションクッキーを削除
+	_ = h.sessionAdapter.DeleteSessionToken(r, w)
+	clearCookie(w, "oauthstate")
 
 	http.Redirect(w, r, config.Env.FrontendURL+"/", http.StatusTemporaryRedirect)
 }
 
 // GetCurrentUser 現在のユーザーのセッション情報を返す
 func (h *UserAuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	user, authenticated, err := h.userAuthUseCase.GetCurrentUser(r.Context(), r)
+	// セッショントークンを取得してからusecase呼び出し
+	token, ok, err := h.sessionAdapter.GetSessionToken(r)
+	if err != nil {
+		HandleError(w, err)
+		return
+	}
+
+	var sessionToken string
+	if ok {
+		sessionToken = token
+	}
+
+	user, authenticated, err := h.userAuthUseCase.GetCurrentUser(r.Context(), sessionToken)
 	if err != nil {
 		HandleError(w, err)
 		return

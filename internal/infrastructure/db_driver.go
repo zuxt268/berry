@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/lib"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

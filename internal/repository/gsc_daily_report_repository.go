@@ -5,22 +5,17 @@ import (
 	"encoding/json"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type GSCDailyReportRepository interface {
-	Find(ctx context.Context, f filter.Filter) (*domain.GSCDailyReport, error)
-	List(ctx context.Context, f filter.Filter) ([]*domain.GSCDailyReport, error)
-	Upsert(ctx context.Context, report *domain.GSCDailyReport) error
-}
 
 type gscDailyReportRepository struct {
 	dbDriver infrastructure.DBDriver
 }
 
-func NewGSCDailyReportRepository(dbDriver infrastructure.DBDriver) GSCDailyReportRepository {
+func NewGSCDailyReportRepository(dbDriver infrastructure.DBDriver) port.GSCDailyReportRepository {
 	return &gscDailyReportRepository{dbDriver: dbDriver}
 }
 

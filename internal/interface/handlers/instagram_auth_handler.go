@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/interface/dto/responses"
 	"github.com/zuxt268/berry/internal/interface/middleware"
 	"github.com/zuxt268/berry/internal/usecase"
 )
@@ -22,12 +22,13 @@ func NewInstagramAuthHandler(instagramAuthUseCase usecase.InstagramAuthUseCase) 
 
 // Connect Instagram OAuth連携フローを開始
 func (h *InstagramAuthHandler) Connect(w http.ResponseWriter, r *http.Request) {
-	url, err := h.instagramAuthUseCase.InitiateConnect(r, w)
+	url, state, err := h.instagramAuthUseCase.InitiateConnect()
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/settings")
 		return
 	}
 
+	setOAuthStateCookie(w, "instagram_oauthstate", state)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
@@ -47,7 +48,16 @@ func (h *InstagramAuthHandler) Callback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	conn, err := h.instagramAuthUseCase.HandleCallback(r.Context(), r, w, user.ID, code, state)
+	// state検証
+	if err := verifyOAuthState(r, "instagram_oauthstate", state); err != nil {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidToken, "/settings")
+		return
+	}
+
+	// クッキー削除
+	clearCookie(w, "instagram_oauthstate")
+
+	conn, err := h.instagramAuthUseCase.HandleCallback(r.Context(), user.ID, code)
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/settings")
 		return
@@ -71,22 +81,12 @@ func (h *InstagramAuthHandler) GetConnections(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	responses := make([]*domain.InstagramConnectionResponse, len(connections))
+	resp := make([]*responses.InstagramConnectionResponse, len(connections))
 	for i, c := range connections {
-		responses[i] = &domain.InstagramConnectionResponse{
-			UID:                        c.UID,
-			InstagramBusinessAccountID: c.InstagramBusinessAccountID,
-			FacebookPageID:             c.FacebookPageID,
-			TokenExpiresAt:             c.TokenExpiresAt,
-			ConnectedAt:                c.ConnectedAt,
-			DisconnectedAt:             c.DisconnectedAt,
-		}
+		resp[i] = responses.ToInstagramConnectionResponse(c)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"connections": responses,
-	})
+	respondJSON(w, http.StatusOK, map[string]any{"connections": resp})
 }
 
 // Disconnect Instagram連携を解除
@@ -108,7 +108,5 @@ func (h *InstagramAuthHandler) Disconnect(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "disconnected"})
+	respondJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
 }

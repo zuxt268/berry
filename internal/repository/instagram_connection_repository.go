@@ -4,24 +4,17 @@ import (
 	"context"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type InstagramConnectionRepository interface {
-	Find(ctx context.Context, f filter.Filter) (*domain.InstagramConnection, error)
-	List(ctx context.Context, f filter.Filter) ([]*domain.InstagramConnection, error)
-	Create(ctx context.Context, conn *domain.InstagramConnection) (*domain.InstagramConnection, error)
-	Update(ctx context.Context, conn *domain.InstagramConnection, f filter.Filter) (*domain.InstagramConnection, error)
-	Delete(ctx context.Context, f filter.Filter) error
-}
 
 type instagramConnectionRepository struct {
 	dbDriver infrastructure.DBDriver
 }
 
-func NewInstagramConnectionRepository(dbDriver infrastructure.DBDriver) InstagramConnectionRepository {
+func NewInstagramConnectionRepository(dbDriver infrastructure.DBDriver) port.InstagramConnectionRepository {
 	return &instagramConnectionRepository{dbDriver: dbDriver}
 }
 

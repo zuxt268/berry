@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/interface/dto/responses"
 	"github.com/zuxt268/berry/internal/interface/middleware"
 	"github.com/zuxt268/berry/internal/usecase"
 )
@@ -29,11 +29,16 @@ func (h *GBPAuthHandler) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, err := h.gbpAuthUseCase.InitiateConnect(r, w, locationID, accountID)
+	url, state, err := h.gbpAuthUseCase.InitiateConnect(locationID, accountID)
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/settings")
 		return
 	}
+
+	// stateとlocation_id、account_idをクッキーに保存
+	setOAuthStateCookie(w, "gbp_oauthstate", state)
+	setValueCookie(w, "gbp_location_id", locationID)
+	setValueCookie(w, "gbp_account_id", accountID)
 
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
@@ -54,7 +59,32 @@ func (h *GBPAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := h.gbpAuthUseCase.HandleCallback(r.Context(), r, w, user.ID, code, state)
+	// state検証
+	if err := verifyOAuthState(r, "gbp_oauthstate", state); err != nil {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidToken, "/settings")
+		return
+	}
+
+	// location_id取得
+	locationID, err := getOAuthStateCookie(r, "gbp_location_id")
+	if err != nil || locationID == "" {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidArgument, "/settings")
+		return
+	}
+
+	// account_id取得
+	accountID, err := getOAuthStateCookie(r, "gbp_account_id")
+	if err != nil || accountID == "" {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidArgument, "/settings")
+		return
+	}
+
+	// クッキー削除
+	clearCookie(w, "gbp_oauthstate")
+	clearCookie(w, "gbp_location_id")
+	clearCookie(w, "gbp_account_id")
+
+	conn, err := h.gbpAuthUseCase.HandleCallback(r.Context(), user.ID, code, locationID, accountID)
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/settings")
 		return
@@ -78,21 +108,12 @@ func (h *GBPAuthHandler) GetConnections(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	responses := make([]*domain.GBPConnectionResponse, len(connections))
+	resp := make([]*responses.GBPConnectionResponse, len(connections))
 	for i, c := range connections {
-		responses[i] = &domain.GBPConnectionResponse{
-			UID:            c.UID,
-			LocationID:     c.LocationID,
-			AccountID:      c.AccountID,
-			ConnectedAt:    c.ConnectedAt,
-			DisconnectedAt: c.DisconnectedAt,
-		}
+		resp[i] = responses.ToGBPConnectionResponse(c)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"connections": responses,
-	})
+	respondJSON(w, http.StatusOK, map[string]any{"connections": resp})
 }
 
 // Disconnect GBP連携を解除
@@ -114,7 +135,5 @@ func (h *GBPAuthHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "disconnected"})
+	respondJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
 }

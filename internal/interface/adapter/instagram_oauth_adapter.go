@@ -10,32 +10,16 @@ import (
 
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/usecase/port"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/facebook"
 )
-
-// InstagramOAuthResult Instagram OAuth認証で取得したトークン情報
-type InstagramOAuthResult struct {
-	AccessToken                string
-	TokenExpiresAt             time.Time
-	InstagramBusinessAccountID string
-	FacebookPageID             string
-}
-
-// InstagramOAuthAdapter Instagram OAuth操作のインターフェース
-//
-//go:generate mockgen -source=$GOFILE -destination=./mock/mock_$GOFILE -package mock
-type InstagramOAuthAdapter interface {
-	GetAuthURL(state string) string
-	ExchangeCode(ctx context.Context, code string) (*InstagramOAuthResult, error)
-	RefreshLongLivedToken(ctx context.Context, currentToken string) (string, *time.Time, error)
-}
 
 type instagramOAuthClient struct {
 	config *oauth2.Config
 }
 
-func NewInstagramOAuthClient(redirectURL string) InstagramOAuthAdapter {
+func NewInstagramOAuthClient(redirectURL string) port.InstagramOAuthAdapter {
 	oauthConfig := &oauth2.Config{
 		ClientID:     config.Env.MetaAppID,
 		ClientSecret: config.Env.MetaAppSecret,
@@ -56,7 +40,7 @@ func (c *instagramOAuthClient) GetAuthURL(state string) string {
 }
 
 // ExchangeCode 認証コードを長期トークン+IGビジネスアカウント情報と交換
-func (c *instagramOAuthClient) ExchangeCode(ctx context.Context, code string) (*InstagramOAuthResult, error) {
+func (c *instagramOAuthClient) ExchangeCode(ctx context.Context, code string) (*port.InstagramOAuthResult, error) {
 	// 1. 短期トークンを取得
 	token, err := c.config.Exchange(ctx, code)
 	if err != nil {
@@ -75,7 +59,7 @@ func (c *instagramOAuthClient) ExchangeCode(ctx context.Context, code string) (*
 		return nil, fmt.Errorf("%w: %v", domain.ErrInstagramAPICall, err)
 	}
 
-	return &InstagramOAuthResult{
+	return &port.InstagramOAuthResult{
 		AccessToken:                longLivedToken,
 		TokenExpiresAt:             *expiresAt,
 		InstagramBusinessAccountID: igAccountID,

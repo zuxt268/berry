@@ -3,33 +3,34 @@ package usecase
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/adapter"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/filter"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
 
 // InstagramAuthUseCase Instagram OAuth連携ユースケースのインターフェース
 type InstagramAuthUseCase interface {
-	InitiateConnect(r *http.Request, w http.ResponseWriter) (string, error)
-	HandleCallback(ctx context.Context, r *http.Request, w http.ResponseWriter, userID uint64, code, state string) (*domain.InstagramConnection, error)
+	// InitiateConnect Instagram OAuth連携フローを開始し、認証URLとstateを返す
+	InitiateConnect() (authURL string, state string, err error)
+	// HandleCallback OAuthコールバックを処理してInstagram連携を保存
+	HandleCallback(ctx context.Context, userID uint64, code string) (*domain.InstagramConnection, error)
+	// GetConnections ユーザーのInstagram連携一覧を取得
 	GetConnections(ctx context.Context, userID uint64) ([]*domain.InstagramConnection, error)
+	// Disconnect Instagram連携を解除
 	Disconnect(ctx context.Context, userID uint64, uid string) error
 }
 
 type instagramAuthUseCase struct {
-	instagramOAuthAdapter adapter.InstagramOAuthAdapter
-	instagramConnRepo     repository.InstagramConnectionRepository
+	instagramOAuthAdapter port.InstagramOAuthAdapter
+	instagramConnRepo     port.InstagramConnectionRepository
 }
 
 func NewInstagramAuthUseCase(
-	instagramOAuthAdapter adapter.InstagramOAuthAdapter,
-	instagramConnRepo repository.InstagramConnectionRepository,
+	instagramOAuthAdapter port.InstagramOAuthAdapter,
+	instagramConnRepo port.InstagramConnectionRepository,
 ) InstagramAuthUseCase {
 	return &instagramAuthUseCase{
 		instagramOAuthAdapter: instagramOAuthAdapter,
@@ -38,38 +39,18 @@ func NewInstagramAuthUseCase(
 }
 
 // InitiateConnect Instagram OAuth連携フローを開始
-func (u *instagramAuthUseCase) InitiateConnect(r *http.Request, w http.ResponseWriter) (string, error) {
+func (u *instagramAuthUseCase) InitiateConnect() (string, string, error) {
 	state, err := generateState()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-
-	stateCookie := &http.Cookie{
-		Name:     "instagram_oauthstate",
-		Value:    state,
-		MaxAge:   300,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv != "local",
-		SameSite: http.SameSiteLaxMode,
-		Path:     "/",
-	}
-	http.SetCookie(w, stateCookie)
 
 	url := u.instagramOAuthAdapter.GetAuthURL(state)
-	return url, nil
+	return url, state, nil
 }
 
 // HandleCallback OAuthコールバックを処理してInstagram連携を保存
-func (u *instagramAuthUseCase) HandleCallback(ctx context.Context, r *http.Request, w http.ResponseWriter, userID uint64, code, state string) (*domain.InstagramConnection, error) {
-	// state検証
-	stateCookie, err := r.Cookie("instagram_oauthstate")
-	if err != nil || state != stateCookie.Value {
-		return nil, domain.ErrInvalidToken
-	}
-
-	// クッキー削除
-	clearCookie(w, "instagram_oauthstate")
-
+func (u *instagramAuthUseCase) HandleCallback(ctx context.Context, userID uint64, code string) (*domain.InstagramConnection, error) {
 	// コードをトークン+IGアカウント情報に交換
 	result, err := u.instagramOAuthAdapter.ExchangeCode(ctx, code)
 	if err != nil {

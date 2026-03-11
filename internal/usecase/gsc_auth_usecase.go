@@ -3,23 +3,20 @@ package usecase
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/adapter"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/filter"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
 
 // GSCAuthUseCase GSC OAuth連携ユースケースのインターフェース
 type GSCAuthUseCase interface {
-	// InitiateConnect GSC OAuth連携フローを開始
-	InitiateConnect(r *http.Request, w http.ResponseWriter, siteURL string) (string, error)
+	// InitiateConnect GSC OAuth連携フローを開始し、認証URLとstateを返す
+	InitiateConnect(siteURL string) (authURL string, state string, err error)
 	// HandleCallback OAuthコールバックを処理してGSC連携を保存
-	HandleCallback(ctx context.Context, r *http.Request, w http.ResponseWriter, userID uint64, code, state string) (*domain.GSCConnection, error)
+	HandleCallback(ctx context.Context, userID uint64, code, siteURL string) (*domain.GSCConnection, error)
 	// GetConnections ユーザーのGSC連携一覧を取得
 	GetConnections(ctx context.Context, userID uint64) ([]*domain.GSCConnection, error)
 	// Disconnect GSC連携を解除
@@ -27,14 +24,14 @@ type GSCAuthUseCase interface {
 }
 
 type gscAuthUseCase struct {
-	gscOAuthAdapter adapter.GSCOAuthAdapter
-	gscConnRepo     repository.GSCConnectionRepository
+	gscOAuthAdapter port.GSCOAuthAdapter
+	gscConnRepo     port.GSCConnectionRepository
 }
 
 // NewGSCAuthUseCase 新しいGSCAuthUseCaseインスタンスを作成
 func NewGSCAuthUseCase(
-	gscOAuthAdapter adapter.GSCOAuthAdapter,
-	gscConnRepo repository.GSCConnectionRepository,
+	gscOAuthAdapter port.GSCOAuthAdapter,
+	gscConnRepo port.GSCConnectionRepository,
 ) GSCAuthUseCase {
 	return &gscAuthUseCase{
 		gscOAuthAdapter: gscOAuthAdapter,
@@ -43,59 +40,18 @@ func NewGSCAuthUseCase(
 }
 
 // InitiateConnect GSC OAuth連携フローを開始
-func (u *gscAuthUseCase) InitiateConnect(r *http.Request, w http.ResponseWriter, siteURL string) (string, error) {
+func (u *gscAuthUseCase) InitiateConnect(siteURL string) (string, string, error) {
 	state, err := generateState()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-
-	// stateをクッキーに保存
-	stateCookie := &http.Cookie{
-		Name:     "gsc_oauthstate",
-		Value:    state,
-		MaxAge:   300,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv != "local",
-		SameSite: http.SameSiteLaxMode,
-		Path:     "/",
-	}
-	http.SetCookie(w, stateCookie)
-
-	// site_urlをクッキーに保存
-	siteURLCookie := &http.Cookie{
-		Name:     "gsc_site_url",
-		Value:    siteURL,
-		MaxAge:   300,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv != "local",
-		SameSite: http.SameSiteLaxMode,
-		Path:     "/",
-	}
-	http.SetCookie(w, siteURLCookie)
 
 	url := u.gscOAuthAdapter.GetAuthURL(state)
-	return url, nil
+	return url, state, nil
 }
 
 // HandleCallback OAuthコールバックを処理してGSC連携を保存
-func (u *gscAuthUseCase) HandleCallback(ctx context.Context, r *http.Request, w http.ResponseWriter, userID uint64, code, state string) (*domain.GSCConnection, error) {
-	// state検証
-	stateCookie, err := r.Cookie("gsc_oauthstate")
-	if err != nil || state != stateCookie.Value {
-		return nil, domain.ErrInvalidToken
-	}
-
-	// site_url取得
-	siteURLCookie, err := r.Cookie("gsc_site_url")
-	if err != nil || siteURLCookie.Value == "" {
-		return nil, domain.ErrInvalidArgument
-	}
-	siteURL := siteURLCookie.Value
-
-	// クッキー削除
-	clearCookie(w, "gsc_oauthstate")
-	clearCookie(w, "gsc_site_url")
-
+func (u *gscAuthUseCase) HandleCallback(ctx context.Context, userID uint64, code, siteURL string) (*domain.GSCConnection, error) {
 	// コードをトークンに交換
 	result, err := u.gscOAuthAdapter.ExchangeCode(ctx, code)
 	if err != nil {

@@ -4,24 +4,17 @@ import (
 	"context"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type GA4ConnectionRepository interface {
-	Find(ctx context.Context, f filter.Filter) (*domain.GA4Connection, error)
-	List(ctx context.Context, f filter.Filter) ([]*domain.GA4Connection, error)
-	Create(ctx context.Context, conn *domain.GA4Connection) (*domain.GA4Connection, error)
-	Update(ctx context.Context, conn *domain.GA4Connection, f filter.Filter) (*domain.GA4Connection, error)
-	Delete(ctx context.Context, f filter.Filter) error
-}
 
 type ga4ConnectionRepository struct {
 	dbDriver infrastructure.DBDriver
 }
 
-func NewGA4ConnectionRepository(dbDriver infrastructure.DBDriver) GA4ConnectionRepository {
+func NewGA4ConnectionRepository(dbDriver infrastructure.DBDriver) port.GA4ConnectionRepository {
 	return &ga4ConnectionRepository{dbDriver: dbDriver}
 }
 

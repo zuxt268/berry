@@ -7,34 +7,18 @@ import (
 
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/usecase/port"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	searchconsole "google.golang.org/api/searchconsole/v1"
 )
 
-// GSCDataAdapter Search Console APIからレポートデータを取得するアダプター
-//
-//go:generate mockgen -source=$GOFILE -destination=./mock/mock_$GOFILE -package mock
-type GSCDataAdapter interface {
-	FetchDailyReport(ctx context.Context, refreshToken string, siteURL string, date time.Time) (*GSCReportData, error)
-}
-
-// GSCReportData Search Consoleから取得したレポートデータ
-type GSCReportData struct {
-	Impressions      int
-	Clicks           int
-	CTR              float64
-	AveragePosition  float64
-	KeywordBreakdown []domain.KeywordBreakdown
-	PageBreakdown    []domain.GSCPageBreakdown
-}
-
 type gscDataAdapter struct {
 	oauthConfig *oauth2.Config
 }
 
-func NewGSCDataAdapter() GSCDataAdapter {
+func NewGSCDataAdapter() port.GSCDataAdapter {
 	oauthConfig := &oauth2.Config{
 		ClientID:     config.Env.GoogleClientID,
 		ClientSecret: config.Env.GoogleClientSecret,
@@ -46,7 +30,7 @@ func NewGSCDataAdapter() GSCDataAdapter {
 	return &gscDataAdapter{oauthConfig: oauthConfig}
 }
 
-func (a *gscDataAdapter) FetchDailyReport(ctx context.Context, refreshToken string, siteURL string, date time.Time) (*GSCReportData, error) {
+func (a *gscDataAdapter) FetchDailyReport(ctx context.Context, refreshToken string, siteURL string, date time.Time) (*domain.GSCDailyReport, error) {
 	service, err := a.buildService(ctx, refreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrGSCTokenRefresh, err)
@@ -54,24 +38,24 @@ func (a *gscDataAdapter) FetchDailyReport(ctx context.Context, refreshToken stri
 
 	dateStr := date.Format("2006-01-02")
 
-	data := &GSCReportData{}
+	report := &domain.GSCDailyReport{}
 
 	// リクエスト1: サマリー指標
-	if err := a.fetchSummary(ctx, service, siteURL, dateStr, data); err != nil {
+	if err := a.fetchSummary(ctx, service, siteURL, dateStr, report); err != nil {
 		return nil, err
 	}
 
 	// リクエスト2: キーワード別
-	if err := a.fetchKeywords(ctx, service, siteURL, dateStr, data); err != nil {
+	if err := a.fetchKeywords(ctx, service, siteURL, dateStr, report); err != nil {
 		return nil, err
 	}
 
 	// リクエスト3: ページ別
-	if err := a.fetchPages(ctx, service, siteURL, dateStr, data); err != nil {
+	if err := a.fetchPages(ctx, service, siteURL, dateStr, report); err != nil {
 		return nil, err
 	}
 
-	return data, nil
+	return report, nil
 }
 
 func (a *gscDataAdapter) buildService(ctx context.Context, refreshToken string) (*searchconsole.Service, error) {
@@ -87,7 +71,7 @@ func (a *gscDataAdapter) buildService(ctx context.Context, refreshToken string) 
 }
 
 // fetchSummary サマリー指標を取得（impressions, clicks, ctr, position）
-func (a *gscDataAdapter) fetchSummary(ctx context.Context, service *searchconsole.Service, siteURL, dateStr string, data *GSCReportData) error {
+func (a *gscDataAdapter) fetchSummary(ctx context.Context, service *searchconsole.Service, siteURL, dateStr string, report *domain.GSCDailyReport) error {
 	req := &searchconsole.SearchAnalyticsQueryRequest{
 		StartDate: dateStr,
 		EndDate:   dateStr,
@@ -100,17 +84,17 @@ func (a *gscDataAdapter) fetchSummary(ctx context.Context, service *searchconsol
 
 	if len(resp.Rows) > 0 {
 		row := resp.Rows[0]
-		data.Impressions = int(row.Impressions)
-		data.Clicks = int(row.Clicks)
-		data.CTR = row.Ctr
-		data.AveragePosition = row.Position
+		report.Impressions = int(row.Impressions)
+		report.Clicks = int(row.Clicks)
+		report.CTR = row.Ctr
+		report.AveragePosition = row.Position
 	}
 
 	return nil
 }
 
 // fetchKeywords キーワード別データを取得（上位100件）
-func (a *gscDataAdapter) fetchKeywords(ctx context.Context, service *searchconsole.Service, siteURL, dateStr string, data *GSCReportData) error {
+func (a *gscDataAdapter) fetchKeywords(ctx context.Context, service *searchconsole.Service, siteURL, dateStr string, report *domain.GSCDailyReport) error {
 	req := &searchconsole.SearchAnalyticsQueryRequest{
 		StartDate:  dateStr,
 		EndDate:    dateStr,
@@ -124,7 +108,7 @@ func (a *gscDataAdapter) fetchKeywords(ctx context.Context, service *searchconso
 	}
 
 	for _, row := range resp.Rows {
-		data.KeywordBreakdown = append(data.KeywordBreakdown, domain.KeywordBreakdown{
+		report.KeywordBreakdown = append(report.KeywordBreakdown, domain.KeywordBreakdown{
 			Query:           row.Keys[0],
 			Impressions:     int(row.Impressions),
 			Clicks:          int(row.Clicks),
@@ -137,7 +121,7 @@ func (a *gscDataAdapter) fetchKeywords(ctx context.Context, service *searchconso
 }
 
 // fetchPages ページ別データを取得（上位100件）
-func (a *gscDataAdapter) fetchPages(ctx context.Context, service *searchconsole.Service, siteURL, dateStr string, data *GSCReportData) error {
+func (a *gscDataAdapter) fetchPages(ctx context.Context, service *searchconsole.Service, siteURL, dateStr string, report *domain.GSCDailyReport) error {
 	req := &searchconsole.SearchAnalyticsQueryRequest{
 		StartDate:  dateStr,
 		EndDate:    dateStr,
@@ -151,7 +135,7 @@ func (a *gscDataAdapter) fetchPages(ctx context.Context, service *searchconsole.
 	}
 
 	for _, row := range resp.Rows {
-		data.PageBreakdown = append(data.PageBreakdown, domain.GSCPageBreakdown{
+		report.PageBreakdown = append(report.PageBreakdown, domain.GSCPageBreakdown{
 			Page:            row.Keys[0],
 			Impressions:     int(row.Impressions),
 			Clicks:          int(row.Clicks),

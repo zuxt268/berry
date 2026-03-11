@@ -5,22 +5,17 @@ import (
 	"encoding/json"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type InstagramDailyReportRepository interface {
-	Find(ctx context.Context, f filter.Filter) (*domain.InstagramDailyReport, error)
-	List(ctx context.Context, f filter.Filter) ([]*domain.InstagramDailyReport, error)
-	Upsert(ctx context.Context, report *domain.InstagramDailyReport) error
-}
 
 type instagramDailyReportRepository struct {
 	dbDriver infrastructure.DBDriver
 }
 
-func NewInstagramDailyReportRepository(dbDriver infrastructure.DBDriver) InstagramDailyReportRepository {
+func NewInstagramDailyReportRepository(dbDriver infrastructure.DBDriver) port.InstagramDailyReportRepository {
 	return &instagramDailyReportRepository{dbDriver: dbDriver}
 }
 

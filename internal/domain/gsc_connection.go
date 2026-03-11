@@ -13,14 +13,3 @@ type GSCConnection struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
-
-type ConnectGSCRequest struct {
-	SiteURL string `json:"site_url" validate:"required"`
-}
-
-type GSCConnectionResponse struct {
-	UID            string     `json:"uid"`
-	SiteURL        string     `json:"site_url"`
-	ConnectedAt    time.Time  `json:"connected_at"`
-	DisconnectedAt *time.Time `json:"disconnected_at,omitempty"`
-}

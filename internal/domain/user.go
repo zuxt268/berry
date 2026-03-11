@@ -22,38 +22,3 @@ type User struct {
 func (u *User) IsActive() bool {
 	return u.Status == UserStatusActive
 }
-
-type GetUsersRequest struct {
-	Name   *string `json:"name"`
-	Email  *string `json:"email"`
-	Status *int    `json:"status"`
-	Pagination
-}
-
-type CreateUserRequest struct {
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Status int    `json:"status"`
-}
-
-type UpdateUserRequest struct {
-	UID    string  `json:"uid"`
-	Name   *string `json:"name"`
-	Email  *string `json:"email"`
-	Status *int    `json:"status"`
-}
-
-type UserResponse struct {
-	ID        uint64    `json:"id"`
-	UID       string    `json:"uid"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	Status    int       `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type UsersResponse struct {
-	Users []*UserResponse `json:"users"`
-	Paginate
-}

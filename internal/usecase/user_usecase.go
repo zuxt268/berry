@@ -6,26 +6,26 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/filter"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
 
 type userUsecase struct {
-	baseRepository repository.BaseRepository
-	userRepository repository.UserRepository
+	baseRepository port.BaseRepository
+	userRepository port.UserRepository
 }
 
 type UserUsecase interface {
 	GetByUID(ctx context.Context, uid string) (*domain.User, error)
-	Gets(ctx context.Context, input domain.GetUsersRequest) (*domain.UsersResponse, error)
-	Update(ctx context.Context, input domain.UpdateUserRequest) (*domain.UserResponse, error)
-	Create(ctx context.Context, input domain.CreateUserRequest) (*domain.UserResponse, error)
+	Gets(ctx context.Context, input GetUsersInput) ([]*domain.User, int64, error)
+	Update(ctx context.Context, input UpdateUserInput) (*domain.User, error)
+	Create(ctx context.Context, input CreateUserInput) (*domain.User, error)
 	Delete(ctx context.Context, uid string) error
 }
 
 func NewUserUsecase(
-	baseRepository repository.BaseRepository,
-	userRepository repository.UserRepository,
+	baseRepository port.BaseRepository,
+	userRepository port.UserRepository,
 ) UserUsecase {
 	return &userUsecase{
 		baseRepository: baseRepository,
@@ -42,7 +42,7 @@ func (u *userUsecase) GetByUID(ctx context.Context, uid string) (*domain.User, e
 	return user, nil
 }
 
-func (u *userUsecase) Gets(ctx context.Context, input domain.GetUsersRequest) (*domain.UsersResponse, error) {
+func (u *userUsecase) Gets(ctx context.Context, input GetUsersInput) ([]*domain.User, int64, error) {
 	f := &filter.UserFilter{
 		Name:   input.Name,
 		Email:  input.Email,
@@ -51,18 +51,18 @@ func (u *userUsecase) Gets(ctx context.Context, input domain.GetUsersRequest) (*
 
 	users, err := u.userRepository.List(ctx, f)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	total, err := u.userRepository.Count(ctx, f)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return toUsersResponse(users, total), nil
+	return users, total, nil
 }
 
-func (u *userUsecase) Create(ctx context.Context, input domain.CreateUserRequest) (*domain.UserResponse, error) {
+func (u *userUsecase) Create(ctx context.Context, input CreateUserInput) (*domain.User, error) {
 
 	user := &domain.User{
 		UID:    uuid.NewString(),
@@ -84,10 +84,10 @@ func (u *userUsecase) Create(ctx context.Context, input domain.CreateUserRequest
 		return nil, err
 	}
 
-	return toUserResponse(created), nil
+	return created, nil
 }
 
-func (u *userUsecase) Update(ctx context.Context, input domain.UpdateUserRequest) (*domain.UserResponse, error) {
+func (u *userUsecase) Update(ctx context.Context, input UpdateUserInput) (*domain.User, error) {
 	f := &filter.UserFilter{UID: &input.UID}
 
 	existing, err := u.userRepository.Find(ctx, f)
@@ -110,7 +110,7 @@ func (u *userUsecase) Update(ctx context.Context, input domain.UpdateUserRequest
 		return nil, err
 	}
 
-	return toUserResponse(updated), nil
+	return updated, nil
 }
 
 func (u *userUsecase) Delete(ctx context.Context, uid string) error {
@@ -122,30 +122,4 @@ func (u *userUsecase) Delete(ctx context.Context, uid string) error {
 	}
 
 	return u.userRepository.Delete(ctx, f)
-}
-
-func toUserResponse(u *domain.User) *domain.UserResponse {
-	return &domain.UserResponse{
-		ID:        u.ID,
-		UID:       u.UID,
-		Name:      u.Name,
-		Email:     u.Email,
-		Status:    int(u.Status),
-		CreatedAt: u.CreatedAt,
-		UpdatedAt: u.UpdatedAt,
-	}
-}
-
-func toUsersResponse(users []*domain.User, total int64) *domain.UsersResponse {
-	userResp := make([]*domain.UserResponse, len(users))
-	for i, user := range users {
-		userResp[i] = toUserResponse(user)
-	}
-	return &domain.UsersResponse{
-		Users: userResp,
-		Paginate: domain.Paginate{
-			Total: total,
-			Count: int64(len(userResp)),
-		},
-	}
 }

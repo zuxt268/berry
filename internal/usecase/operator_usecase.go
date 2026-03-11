@@ -6,26 +6,26 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/filter"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
 
 type OperatorUsecase interface {
 	GetByUID(ctx context.Context, uid string) (*domain.Operator, error)
-	Gets(ctx context.Context, input domain.GetOperatorsRequest) (*domain.OperatorsResponse, error)
-	Create(ctx context.Context, input domain.CreateOperatorRequest) (*domain.OperatorResponse, error)
-	Update(ctx context.Context, input domain.UpdateOperatorRequest) (*domain.OperatorResponse, error)
+	Gets(ctx context.Context, input GetOperatorsInput) ([]*domain.Operator, int64, error)
+	Create(ctx context.Context, input CreateOperatorInput) (*domain.Operator, error)
+	Update(ctx context.Context, input UpdateOperatorInput) (*domain.Operator, error)
 	Delete(ctx context.Context, uid string) error
 }
 
 type operatorUsecase struct {
-	baseRepository     repository.BaseRepository
-	operatorRepository repository.OperatorRepository
+	baseRepository     port.BaseRepository
+	operatorRepository port.OperatorRepository
 }
 
 func NewOperatorUsecase(
-	baseRepository repository.BaseRepository,
-	operatorRepository repository.OperatorRepository,
+	baseRepository port.BaseRepository,
+	operatorRepository port.OperatorRepository,
 ) OperatorUsecase {
 	return &operatorUsecase{
 		baseRepository:     baseRepository,
@@ -42,7 +42,7 @@ func (u *operatorUsecase) GetByUID(ctx context.Context, uid string) (*domain.Ope
 	return operator, nil
 }
 
-func (u *operatorUsecase) Gets(ctx context.Context, input domain.GetOperatorsRequest) (*domain.OperatorsResponse, error) {
+func (u *operatorUsecase) Gets(ctx context.Context, input GetOperatorsInput) ([]*domain.Operator, int64, error) {
 	f := &filter.OperatorFilter{
 		Name:     input.Name,
 		Email:    input.Email,
@@ -51,18 +51,18 @@ func (u *operatorUsecase) Gets(ctx context.Context, input domain.GetOperatorsReq
 
 	operators, err := u.operatorRepository.List(ctx, f)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	total, err := u.operatorRepository.Count(ctx, f)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return toOperatorsResponse(operators, total), nil
+	return operators, total, nil
 }
 
-func (u *operatorUsecase) Create(ctx context.Context, input domain.CreateOperatorRequest) (*domain.OperatorResponse, error) {
+func (u *operatorUsecase) Create(ctx context.Context, input CreateOperatorInput) (*domain.Operator, error) {
 	operator := &domain.Operator{
 		UID:      uuid.NewString(),
 		Name:     input.Name,
@@ -83,10 +83,10 @@ func (u *operatorUsecase) Create(ctx context.Context, input domain.CreateOperato
 		return nil, err
 	}
 
-	return toOperatorResponse(created), nil
+	return created, nil
 }
 
-func (u *operatorUsecase) Update(ctx context.Context, input domain.UpdateOperatorRequest) (*domain.OperatorResponse, error) {
+func (u *operatorUsecase) Update(ctx context.Context, input UpdateOperatorInput) (*domain.Operator, error) {
 	f := &filter.OperatorFilter{UID: &input.UID}
 
 	existing, err := u.operatorRepository.Find(ctx, f)
@@ -109,7 +109,7 @@ func (u *operatorUsecase) Update(ctx context.Context, input domain.UpdateOperato
 		return nil, err
 	}
 
-	return toOperatorResponse(updated), nil
+	return updated, nil
 }
 
 func (u *operatorUsecase) Delete(ctx context.Context, uid string) error {
@@ -120,30 +120,4 @@ func (u *operatorUsecase) Delete(ctx context.Context, uid string) error {
 	}
 
 	return u.operatorRepository.Delete(ctx, f)
-}
-
-func toOperatorResponse(o *domain.Operator) *domain.OperatorResponse {
-	return &domain.OperatorResponse{
-		ID:        o.ID,
-		UID:       o.UID,
-		Name:      o.Name,
-		Email:     o.Email,
-		IsActive:  o.IsActive,
-		CreatedAt: o.CreatedAt,
-		UpdatedAt: o.UpdatedAt,
-	}
-}
-
-func toOperatorsResponse(operators []*domain.Operator, total int64) *domain.OperatorsResponse {
-	resp := make([]*domain.OperatorResponse, len(operators))
-	for i, op := range operators {
-		resp[i] = toOperatorResponse(op)
-	}
-	return &domain.OperatorsResponse{
-		Operators: resp,
-		Paginate: domain.Paginate{
-			Total: total,
-			Count: int64(len(resp)),
-		},
-	}
 }

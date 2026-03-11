@@ -6,31 +6,16 @@ import (
 
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/usecase/port"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
-
-// GA4OAuthResult GA4 OAuth認証で取得したトークン情報
-type GA4OAuthResult struct {
-	RefreshToken string
-	AccessToken  string
-}
-
-// GA4OAuthAdapter GA4 OAuth操作のインターフェース
-//
-//go:generate mockgen -source=$GOFILE -destination=./mock/mock_$GOFILE -package mock
-type GA4OAuthAdapter interface {
-	// GetAuthURL stateパラメータ付きのOAuth認証URLを返す
-	GetAuthURL(state string) string
-	// ExchangeCode 認証コードをトークン情報と交換
-	ExchangeCode(ctx context.Context, code string) (*GA4OAuthResult, error)
-}
 
 type ga4OAuthClient struct {
 	config *oauth2.Config
 }
 
-func NewGA4OAuthClient(redirectURL string) GA4OAuthAdapter {
+func NewGA4OAuthClient(redirectURL string) port.GA4OAuthAdapter {
 	oauthConfig := &oauth2.Config{
 		ClientID:     config.Env.GoogleClientID,
 		ClientSecret: config.Env.GoogleClientSecret,
@@ -52,7 +37,7 @@ func (c *ga4OAuthClient) GetAuthURL(state string) string {
 }
 
 // ExchangeCode 認証コードをトークン情報と交換
-func (c *ga4OAuthClient) ExchangeCode(ctx context.Context, code string) (*GA4OAuthResult, error) {
+func (c *ga4OAuthClient) ExchangeCode(ctx context.Context, code string) (*port.GA4OAuthResult, error) {
 	token, err := c.config.Exchange(ctx, code)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrOAuthTokenExchange, err)
@@ -62,7 +47,7 @@ func (c *ga4OAuthClient) ExchangeCode(ctx context.Context, code string) (*GA4OAu
 		return nil, fmt.Errorf("%w: refresh token not provided", domain.ErrOAuthTokenExchange)
 	}
 
-	return &GA4OAuthResult{
+	return &port.GA4OAuthResult{
 		RefreshToken: token.RefreshToken,
 		AccessToken:  token.AccessToken,
 	}, nil

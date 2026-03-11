@@ -7,12 +7,12 @@ type GBPDailyReport struct {
 	GBPConnectionID int64
 	ReportDate      time.Time
 
-	ProfileViews     int
-	PhoneCalls       int
+	ProfileViews      int
+	PhoneCalls        int
 	DirectionRequests int
-	PhotoViews       int
-	ReviewCount      int
-	AverageRating    float64
+	PhotoViews        int
+	ReviewCount       int
+	AverageRating     float64
 
 	SearchQueryBreakdown []SearchQueryBreakdown
 

@@ -9,36 +9,18 @@ import (
 
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/usecase/port"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	analyticsdata "google.golang.org/api/analyticsdata/v1beta"
 	"google.golang.org/api/option"
 )
 
-// GA4DataAdapter GA4 Data APIからレポートデータを取得するアダプター
-//
-//go:generate mockgen -source=$GOFILE -destination=./mock/mock_$GOFILE -package mock
-type GA4DataAdapter interface {
-	FetchDailyReport(ctx context.Context, refreshToken string, propertyID string, date time.Time) (*GA4ReportData, error)
-}
-
-// GA4ReportData GA4から取得したレポートデータ
-type GA4ReportData struct {
-	Sessions           int
-	TotalUsers         int
-	BounceRate         float64
-	AvgSessionDuration float64
-	Conversions        int
-	ChannelBreakdown   []domain.ChannelBreakdown
-	DeviceBreakdown    []domain.DeviceBreakdown
-	PageBreakdown      []domain.PageBreakdown
-}
-
 type ga4DataAdapter struct {
 	oauthConfig *oauth2.Config
 }
 
-func NewGA4DataAdapter() GA4DataAdapter {
+func NewGA4DataAdapter() port.GA4DataAdapter {
 	oauthConfig := &oauth2.Config{
 		ClientID:     config.Env.GoogleClientID,
 		ClientSecret: config.Env.GoogleClientSecret,
@@ -50,7 +32,7 @@ func NewGA4DataAdapter() GA4DataAdapter {
 	return &ga4DataAdapter{oauthConfig: oauthConfig}
 }
 
-func (a *ga4DataAdapter) FetchDailyReport(ctx context.Context, refreshToken string, propertyID string, date time.Time) (*GA4ReportData, error) {
+func (a *ga4DataAdapter) FetchDailyReport(ctx context.Context, refreshToken string, propertyID string, date time.Time) (*domain.GA4DailyReport, error) {
 	service, err := a.buildService(ctx, refreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrGA4TokenRefresh, err)
@@ -63,24 +45,24 @@ func (a *ga4DataAdapter) FetchDailyReport(ctx context.Context, refreshToken stri
 		propertyID = "properties/" + propertyID
 	}
 
-	data := &GA4ReportData{}
+	report := &domain.GA4DailyReport{}
 
 	// リクエスト1: サマリー指標
-	if err := a.fetchSummary(ctx, service, propertyID, dateStr, data); err != nil {
+	if err := a.fetchSummary(ctx, service, propertyID, dateStr, report); err != nil {
 		return nil, err
 	}
 
 	// リクエスト2: 流入経路 + デバイス別
-	if err := a.fetchChannelDevice(ctx, service, propertyID, dateStr, data); err != nil {
+	if err := a.fetchChannelDevice(ctx, service, propertyID, dateStr, report); err != nil {
 		return nil, err
 	}
 
 	// リクエスト3: ページ別PV
-	if err := a.fetchPages(ctx, service, propertyID, dateStr, data); err != nil {
+	if err := a.fetchPages(ctx, service, propertyID, dateStr, report); err != nil {
 		return nil, err
 	}
 
-	return data, nil
+	return report, nil
 }
 
 func (a *ga4DataAdapter) buildService(ctx context.Context, refreshToken string) (*analyticsdata.Service, error) {
@@ -96,7 +78,7 @@ func (a *ga4DataAdapter) buildService(ctx context.Context, refreshToken string) 
 }
 
 // fetchSummary サマリー指標を取得（sessions, totalUsers, bounceRate, averageSessionDuration, conversions）
-func (a *ga4DataAdapter) fetchSummary(ctx context.Context, service *analyticsdata.Service, propertyID, dateStr string, data *GA4ReportData) error {
+func (a *ga4DataAdapter) fetchSummary(ctx context.Context, service *analyticsdata.Service, propertyID, dateStr string, report *domain.GA4DailyReport) error {
 	req := &analyticsdata.RunReportRequest{
 		DateRanges: []*analyticsdata.DateRange{
 			{StartDate: dateStr, EndDate: dateStr},
@@ -117,18 +99,18 @@ func (a *ga4DataAdapter) fetchSummary(ctx context.Context, service *analyticsdat
 
 	if len(resp.Rows) > 0 {
 		row := resp.Rows[0]
-		data.Sessions = parseIntMetric(row.MetricValues, 0)
-		data.TotalUsers = parseIntMetric(row.MetricValues, 1)
-		data.BounceRate = parseFloatMetric(row.MetricValues, 2)
-		data.AvgSessionDuration = parseFloatMetric(row.MetricValues, 3)
-		data.Conversions = parseIntMetric(row.MetricValues, 4)
+		report.Sessions = parseIntMetric(row.MetricValues, 0)
+		report.TotalUsers = parseIntMetric(row.MetricValues, 1)
+		report.BounceRate = parseFloatMetric(row.MetricValues, 2)
+		report.AvgSessionDuration = parseFloatMetric(row.MetricValues, 3)
+		report.Conversions = parseIntMetric(row.MetricValues, 4)
 	}
 
 	return nil
 }
 
 // fetchChannelDevice 流入経路別 + デバイス別を取得
-func (a *ga4DataAdapter) fetchChannelDevice(ctx context.Context, service *analyticsdata.Service, propertyID, dateStr string, data *GA4ReportData) error {
+func (a *ga4DataAdapter) fetchChannelDevice(ctx context.Context, service *analyticsdata.Service, propertyID, dateStr string, report *domain.GA4DailyReport) error {
 	req := &analyticsdata.RunReportRequest{
 		DateRanges: []*analyticsdata.DateRange{
 			{StartDate: dateStr, EndDate: dateStr},
@@ -172,17 +154,17 @@ func (a *ga4DataAdapter) fetchChannelDevice(ctx context.Context, service *analyt
 	}
 
 	for _, v := range channelMap {
-		data.ChannelBreakdown = append(data.ChannelBreakdown, *v)
+		report.ChannelBreakdown = append(report.ChannelBreakdown, *v)
 	}
 	for _, v := range deviceMap {
-		data.DeviceBreakdown = append(data.DeviceBreakdown, *v)
+		report.DeviceBreakdown = append(report.DeviceBreakdown, *v)
 	}
 
 	return nil
 }
 
 // fetchPages ページ別PVを取得（上位50件）
-func (a *ga4DataAdapter) fetchPages(ctx context.Context, service *analyticsdata.Service, propertyID, dateStr string, data *GA4ReportData) error {
+func (a *ga4DataAdapter) fetchPages(ctx context.Context, service *analyticsdata.Service, propertyID, dateStr string, report *domain.GA4DailyReport) error {
 	req := &analyticsdata.RunReportRequest{
 		DateRanges: []*analyticsdata.DateRange{
 			{StartDate: dateStr, EndDate: dateStr},
@@ -209,7 +191,7 @@ func (a *ga4DataAdapter) fetchPages(ctx context.Context, service *analyticsdata.
 	}
 
 	for _, row := range resp.Rows {
-		data.PageBreakdown = append(data.PageBreakdown, domain.PageBreakdown{
+		report.PageBreakdown = append(report.PageBreakdown, domain.PageBreakdown{
 			PagePath:      row.DimensionValues[0].Value,
 			PageViews:     parseIntMetric(row.MetricValues, 0),
 			AvgTimeOnPage: parseFloatMetric(row.MetricValues, 1),

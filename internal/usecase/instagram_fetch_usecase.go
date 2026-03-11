@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/adapter"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/usecase/port"
+	"github.com/zuxt268/berry/internal/filter"
 )
 
 // InstagramFetchUseCase Instagramデータ取得バッチのユースケース
@@ -17,15 +16,15 @@ type InstagramFetchUseCase interface {
 }
 
 type instagramFetchUseCase struct {
-	instagramConnRepo        repository.InstagramConnectionRepository
-	instagramDailyReportRepo repository.InstagramDailyReportRepository
-	instagramDataAdapter     adapter.InstagramDataAdapter
+	instagramConnRepo        port.InstagramConnectionRepository
+	instagramDailyReportRepo port.InstagramDailyReportRepository
+	instagramDataAdapter     port.InstagramDataAdapter
 }
 
 func NewInstagramFetchUseCase(
-	instagramConnRepo repository.InstagramConnectionRepository,
-	instagramDailyReportRepo repository.InstagramDailyReportRepository,
-	instagramDataAdapter adapter.InstagramDataAdapter,
+	instagramConnRepo port.InstagramConnectionRepository,
+	instagramDailyReportRepo port.InstagramDailyReportRepository,
+	instagramDataAdapter port.InstagramDataAdapter,
 ) InstagramFetchUseCase {
 	return &instagramFetchUseCase{
 		instagramConnRepo:        instagramConnRepo,
@@ -78,27 +77,17 @@ func (u *instagramFetchUseCase) Execute(ctx context.Context, targetDate time.Tim
 }
 
 func (u *instagramFetchUseCase) fetchAndSave(ctx context.Context, conn *domain.InstagramConnection, targetDate time.Time) error {
-	data, err := u.instagramDataAdapter.FetchDailyReport(ctx, conn.AccessToken, conn.InstagramBusinessAccountID, targetDate)
+	report, err := u.instagramDataAdapter.FetchDailyReport(ctx, conn.AccessToken, conn.InstagramBusinessAccountID, targetDate)
 	if err != nil {
 		return err
 	}
 
 	now := time.Now()
-	report := &domain.InstagramDailyReport{
-		InstagramConnectionID: conn.ID,
-		ReportDate:            targetDate,
-		FollowerCount:         data.FollowerCount,
-		Impressions:           data.Impressions,
-		Reach:                 data.Reach,
-		ProfileViews:          data.ProfileViews,
-		WebsiteClicks:         data.WebsiteClicks,
-		PostEngagement:        data.PostEngagements,
-		AudienceDemographics:  data.AudienceDemographics,
-		StoriesInsights:       data.StoriesInsights,
-		FetchedAt:             now,
-		CreatedAt:             now,
-		UpdatedAt:             now,
-	}
+	report.InstagramConnectionID = conn.ID
+	report.ReportDate = targetDate
+	report.FetchedAt = now
+	report.CreatedAt = now
+	report.UpdatedAt = now
 
 	return u.instagramDailyReportRepo.Upsert(ctx, report)
 }

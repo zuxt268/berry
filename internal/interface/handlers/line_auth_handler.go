@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/interface/dto/responses"
 	"github.com/zuxt268/berry/internal/interface/middleware"
 	"github.com/zuxt268/berry/internal/usecase"
 )
@@ -27,7 +28,7 @@ func (h *LineAuthHandler) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req domain.ConnectLineRequest
+	var req usecase.ConnectLineInput
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		HandleError(w, domain.ErrInvalidArgument)
 		return
@@ -46,15 +47,7 @@ func (h *LineAuthHandler) Connect(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("LINE connection completed", "uid", conn.UID, "channelID", conn.ChannelID)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(&domain.LineConnectionResponse{
-		UID:         conn.UID,
-		ChannelID:   conn.ChannelID,
-		ChannelName: conn.ChannelName,
-		BotUserID:   conn.BotUserID,
-		ConnectedAt: conn.ConnectedAt,
-	})
+	respondJSON(w, http.StatusCreated, responses.ToLineConnectionResponse(conn))
 }
 
 // GetConnections 現在のユーザーのLINE連携一覧を返す
@@ -71,22 +64,12 @@ func (h *LineAuthHandler) GetConnections(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	responses := make([]*domain.LineConnectionResponse, len(connections))
+	resp := make([]*responses.LineConnectionResponse, len(connections))
 	for i, c := range connections {
-		responses[i] = &domain.LineConnectionResponse{
-			UID:            c.UID,
-			ChannelID:      c.ChannelID,
-			ChannelName:    c.ChannelName,
-			BotUserID:      c.BotUserID,
-			ConnectedAt:    c.ConnectedAt,
-			DisconnectedAt: c.DisconnectedAt,
-		}
+		resp[i] = responses.ToLineConnectionResponse(c)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"connections": responses,
-	})
+	respondJSON(w, http.StatusOK, map[string]any{"connections": resp})
 }
 
 // Disconnect LINE連携を解除
@@ -108,7 +91,5 @@ func (h *LineAuthHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "disconnected"})
+	respondJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
 }

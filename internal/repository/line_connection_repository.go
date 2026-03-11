@@ -4,24 +4,17 @@ import (
 	"context"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/filter"
 	"github.com/zuxt268/berry/internal/infrastructure"
-	"github.com/zuxt268/berry/internal/interface/dto/model"
-	"github.com/zuxt268/berry/internal/interface/filter"
+	"github.com/zuxt268/berry/internal/repository/model"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
-
-type LineConnectionRepository interface {
-	Find(ctx context.Context, f filter.Filter) (*domain.LineConnection, error)
-	List(ctx context.Context, f filter.Filter) ([]*domain.LineConnection, error)
-	Create(ctx context.Context, conn *domain.LineConnection) (*domain.LineConnection, error)
-	Update(ctx context.Context, conn *domain.LineConnection, f filter.Filter) (*domain.LineConnection, error)
-	Delete(ctx context.Context, f filter.Filter) error
-}
 
 type lineConnectionRepository struct {
 	dbDriver infrastructure.DBDriver
 }
 
-func NewLineConnectionRepository(dbDriver infrastructure.DBDriver) LineConnectionRepository {
+func NewLineConnectionRepository(dbDriver infrastructure.DBDriver) port.LineConnectionRepository {
 	return &lineConnectionRepository{dbDriver: dbDriver}
 }
 

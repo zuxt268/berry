@@ -3,23 +3,20 @@ package usecase
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
-	"github.com/zuxt268/berry/internal/interface/adapter"
-	"github.com/zuxt268/berry/internal/interface/filter"
-	"github.com/zuxt268/berry/internal/repository"
+	"github.com/zuxt268/berry/internal/filter"
+	"github.com/zuxt268/berry/internal/usecase/port"
 )
 
 // GA4AuthUseCase GA4 OAuth連携ユースケースのインターフェース
 type GA4AuthUseCase interface {
-	// InitiateConnect GA4 OAuth連携フローを開始
-	InitiateConnect(r *http.Request, w http.ResponseWriter, propertyID string) (string, error)
+	// InitiateConnect GA4 OAuth連携フローを開始し、認証URLとstateを返す
+	InitiateConnect(propertyID string) (authURL string, state string, err error)
 	// HandleCallback OAuthコールバックを処理してGA4連携を保存
-	HandleCallback(ctx context.Context, r *http.Request, w http.ResponseWriter, userID uint64, code, state string) (*domain.GA4Connection, error)
+	HandleCallback(ctx context.Context, userID uint64, code, propertyID string) (*domain.GA4Connection, error)
 	// GetConnections ユーザーのGA4連携一覧を取得
 	GetConnections(ctx context.Context, userID uint64) ([]*domain.GA4Connection, error)
 	// Disconnect GA4連携を解除
@@ -27,14 +24,14 @@ type GA4AuthUseCase interface {
 }
 
 type ga4AuthUseCase struct {
-	ga4OAuthAdapter adapter.GA4OAuthAdapter
-	ga4ConnRepo     repository.GA4ConnectionRepository
+	ga4OAuthAdapter port.GA4OAuthAdapter
+	ga4ConnRepo     port.GA4ConnectionRepository
 }
 
 // NewGA4AuthUseCase 新しいGA4AuthUseCaseインスタンスを作成
 func NewGA4AuthUseCase(
-	ga4OAuthAdapter adapter.GA4OAuthAdapter,
-	ga4ConnRepo repository.GA4ConnectionRepository,
+	ga4OAuthAdapter port.GA4OAuthAdapter,
+	ga4ConnRepo port.GA4ConnectionRepository,
 ) GA4AuthUseCase {
 	return &ga4AuthUseCase{
 		ga4OAuthAdapter: ga4OAuthAdapter,
@@ -43,59 +40,18 @@ func NewGA4AuthUseCase(
 }
 
 // InitiateConnect GA4 OAuth連携フローを開始
-func (u *ga4AuthUseCase) InitiateConnect(r *http.Request, w http.ResponseWriter, propertyID string) (string, error) {
+func (u *ga4AuthUseCase) InitiateConnect(propertyID string) (string, string, error) {
 	state, err := generateState()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-
-	// stateをクッキーに保存
-	stateCookie := &http.Cookie{
-		Name:     "ga4_oauthstate",
-		Value:    state,
-		MaxAge:   300,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv != "local",
-		SameSite: http.SameSiteLaxMode,
-		Path:     "/",
-	}
-	http.SetCookie(w, stateCookie)
-
-	// property_idをクッキーに保存
-	propertyCookie := &http.Cookie{
-		Name:     "ga4_property_id",
-		Value:    propertyID,
-		MaxAge:   300,
-		HttpOnly: true,
-		Secure:   config.Env.AppEnv != "local",
-		SameSite: http.SameSiteLaxMode,
-		Path:     "/",
-	}
-	http.SetCookie(w, propertyCookie)
 
 	url := u.ga4OAuthAdapter.GetAuthURL(state)
-	return url, nil
+	return url, state, nil
 }
 
 // HandleCallback OAuthコールバックを処理してGA4連携を保存
-func (u *ga4AuthUseCase) HandleCallback(ctx context.Context, r *http.Request, w http.ResponseWriter, userID uint64, code, state string) (*domain.GA4Connection, error) {
-	// state検証
-	stateCookie, err := r.Cookie("ga4_oauthstate")
-	if err != nil || state != stateCookie.Value {
-		return nil, domain.ErrInvalidToken
-	}
-
-	// property_id取得
-	propertyCookie, err := r.Cookie("ga4_property_id")
-	if err != nil || propertyCookie.Value == "" {
-		return nil, domain.ErrInvalidArgument
-	}
-	propertyID := propertyCookie.Value
-
-	// クッキー削除
-	clearCookie(w, "ga4_oauthstate")
-	clearCookie(w, "ga4_property_id")
-
+func (u *ga4AuthUseCase) HandleCallback(ctx context.Context, userID uint64, code, propertyID string) (*domain.GA4Connection, error) {
 	// コードをトークンに交換
 	result, err := u.ga4OAuthAdapter.ExchangeCode(ctx, code)
 	if err != nil {
@@ -165,14 +121,4 @@ func (u *ga4AuthUseCase) Disconnect(ctx context.Context, userID uint64, uid stri
 
 	slog.Info("GA4 connection disconnected", "userID", userID, "uid", uid)
 	return nil
-}
-
-func clearCookie(w http.ResponseWriter, name string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     name,
-		Value:    "",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Path:     "/",
-	})
 }

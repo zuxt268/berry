@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/interface/adapter"
 	"github.com/zuxt268/berry/internal/usecase"
 )
 
@@ -17,15 +18,24 @@ type OperatorContextKey struct{}
 
 // AuthMiddleware 認証ミドルウェア
 type AuthMiddleware struct {
-	userAuthUseCase     usecase.UserAuthUseCase
-	operatorAuthUseCase usecase.OperatorAuthUseCase
+	userAuthUseCase        usecase.UserAuthUseCase
+	operatorAuthUseCase    usecase.OperatorAuthUseCase
+	userSessionAdapter     adapter.SessionAdapter
+	operatorSessionAdapter adapter.SessionAdapter
 }
 
 // NewAuthMiddleware 新しいAuthMiddlewareインスタンスを作成
-func NewAuthMiddleware(userAuthUseCase usecase.UserAuthUseCase, operatorAuthUseCase usecase.OperatorAuthUseCase) *AuthMiddleware {
+func NewAuthMiddleware(
+	userAuthUseCase usecase.UserAuthUseCase,
+	operatorAuthUseCase usecase.OperatorAuthUseCase,
+	userSessionAdapter adapter.SessionAdapter,
+	operatorSessionAdapter adapter.SessionAdapter,
+) *AuthMiddleware {
 	return &AuthMiddleware{
-		userAuthUseCase:     userAuthUseCase,
-		operatorAuthUseCase: operatorAuthUseCase,
+		userAuthUseCase:        userAuthUseCase,
+		operatorAuthUseCase:    operatorAuthUseCase,
+		userSessionAdapter:     userSessionAdapter,
+		operatorSessionAdapter: operatorSessionAdapter,
 	}
 }
 
@@ -34,7 +44,21 @@ func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		user, authenticated, err := m.userAuthUseCase.GetCurrentUser(ctx, r)
+		// セッショントークンをクッキーから取得
+		token, ok, err := m.userSessionAdapter.GetSessionToken(r)
+		if err != nil {
+			slog.Warn("authentication failed", "reason", "session read error", "error", err)
+			http.Error(w, "認証エラー", http.StatusInternalServerError)
+			return
+		}
+
+		if !ok || token == "" {
+			slog.Warn("authentication failed", "reason", "no session token")
+			http.Error(w, "認証が必要です", http.StatusUnauthorized)
+			return
+		}
+
+		user, authenticated, err := m.userAuthUseCase.GetCurrentUser(ctx, token)
 		if err != nil {
 			slog.Warn("authentication failed", "reason", "internal error", "error", err)
 			http.Error(w, "認証エラー", http.StatusInternalServerError)
@@ -63,7 +87,21 @@ func (m *AuthMiddleware) RequireOperatorAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		operator, authenticated, err := m.operatorAuthUseCase.GetCurrentOperator(ctx, r)
+		// セッショントークンをクッキーから取得
+		token, ok, err := m.operatorSessionAdapter.GetSessionToken(r)
+		if err != nil {
+			slog.Warn("operator authentication failed", "reason", "session read error", "error", err)
+			http.Error(w, "認証エラー", http.StatusInternalServerError)
+			return
+		}
+
+		if !ok || token == "" {
+			slog.Warn("operator authentication failed", "reason", "no session token")
+			http.Error(w, "認証が必要です", http.StatusUnauthorized)
+			return
+		}
+
+		operator, authenticated, err := m.operatorAuthUseCase.GetCurrentOperator(ctx, token)
 		if err != nil {
 			slog.Warn("operator authentication failed", "reason", "internal error", "error", err)
 			http.Error(w, "認証エラー", http.StatusInternalServerError)
@@ -92,12 +130,14 @@ func (m *AuthMiddleware) OptionalAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		user, authenticated, _ := m.userAuthUseCase.GetCurrentUser(ctx, r)
-
-		if authenticated && user != nil {
-			ctx = context.WithValue(ctx, UserContextKey{}, user)
-			next.ServeHTTP(w, r.WithContext(ctx))
-			return
+		token, ok, _ := m.userSessionAdapter.GetSessionToken(r)
+		if ok && token != "" {
+			user, authenticated, _ := m.userAuthUseCase.GetCurrentUser(ctx, token)
+			if authenticated && user != nil {
+				ctx = context.WithValue(ctx, UserContextKey{}, user)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
 		}
 
 		next.ServeHTTP(w, r)

@@ -19,7 +19,7 @@ const Login = () => {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'linear-gradient(135deg, #e8f4fd 0%, #d6e8f7 100%)',
       }}
     >
       <Card
@@ -32,8 +32,8 @@ const Login = () => {
       >
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div>
-            <Title level={2} style={{ marginBottom: 4 }}>
-              Market Pilot
+            <Title level={2} style={{ marginBottom: 4, color: '#1677ff' }}>
+              Berry
             </Title>
             <Text type="secondary">アカウントにログイン</Text>
           </div>

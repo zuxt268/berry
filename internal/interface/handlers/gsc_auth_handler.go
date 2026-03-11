@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/zuxt268/berry/internal/config"
 	"github.com/zuxt268/berry/internal/domain"
+	"github.com/zuxt268/berry/internal/interface/dto/responses"
 	"github.com/zuxt268/berry/internal/interface/middleware"
 	"github.com/zuxt268/berry/internal/usecase"
 )
@@ -28,11 +28,15 @@ func (h *GSCAuthHandler) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, err := h.gscAuthUseCase.InitiateConnect(r, w, siteURL)
+	url, state, err := h.gscAuthUseCase.InitiateConnect(siteURL)
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/settings")
 		return
 	}
+
+	// stateとsite_urlをクッキーに保存
+	setOAuthStateCookie(w, "gsc_oauthstate", state)
+	setValueCookie(w, "gsc_site_url", siteURL)
 
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
@@ -53,7 +57,24 @@ func (h *GSCAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := h.gscAuthUseCase.HandleCallback(r.Context(), r, w, user.ID, code, state)
+	// state検証
+	if err := verifyOAuthState(r, "gsc_oauthstate", state); err != nil {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidToken, "/settings")
+		return
+	}
+
+	// site_url取得
+	siteURL, err := getOAuthStateCookie(r, "gsc_site_url")
+	if err != nil || siteURL == "" {
+		HandleErrorWithRedirect(w, r, domain.ErrInvalidArgument, "/settings")
+		return
+	}
+
+	// クッキー削除
+	clearCookie(w, "gsc_oauthstate")
+	clearCookie(w, "gsc_site_url")
+
+	conn, err := h.gscAuthUseCase.HandleCallback(r.Context(), user.ID, code, siteURL)
 	if err != nil {
 		HandleErrorWithRedirect(w, r, err, "/settings")
 		return
@@ -77,20 +98,12 @@ func (h *GSCAuthHandler) GetConnections(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	responses := make([]*domain.GSCConnectionResponse, len(connections))
+	resp := make([]*responses.GSCConnectionResponse, len(connections))
 	for i, c := range connections {
-		responses[i] = &domain.GSCConnectionResponse{
-			UID:            c.UID,
-			SiteURL:        c.SiteURL,
-			ConnectedAt:    c.ConnectedAt,
-			DisconnectedAt: c.DisconnectedAt,
-		}
+		resp[i] = responses.ToGSCConnectionResponse(c)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"connections": responses,
-	})
+	respondJSON(w, http.StatusOK, map[string]any{"connections": resp})
 }
 
 // Disconnect GSC連携を解除
@@ -112,7 +125,5 @@ func (h *GSCAuthHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "disconnected"})
+	respondJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
 }
